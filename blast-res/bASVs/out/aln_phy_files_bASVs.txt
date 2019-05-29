@@ -1,0 +1,16 @@
+Comamonadaceae_bASVs.fasta
+Cytophagaceae_bASVs.fasta
+Enterobacteriaceae_bASVs.fasta
+Enterococcaceae_bASVs.fasta
+Flavobacteriaceae_bASVs.fasta
+Hyphomicrobiaceae_bASVs.fasta
+Methylobacteriaceae_bASVs.fasta
+Microbacteriaceae_bASVs.fasta
+Oxalobacteraceae_bASVs.fasta
+Paenibacillaceae_bASVs.fasta
+Pseudomonadaceae_bASVs.fasta
+Rhizobiaceae_bASVs.fasta
+Rhizobiales_Incertae_Sedis_bASVs.fasta
+Sphingobacteriaceae_bASVs.fasta
+Sphingomonadaceae_bASVs.fasta
+Streptococcaceae_bASVs.fasta

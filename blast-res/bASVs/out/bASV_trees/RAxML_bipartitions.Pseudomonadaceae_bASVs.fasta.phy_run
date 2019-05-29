@@ -1,0 +1,137 @@
+#NEXUS
+begin taxa;
+	dimensions ntax=45;
+	taxlabels
+	Pseudomonas_239
+	Pseudomonas_3
+	Pseudomonas_240
+	Pseudomonas_25
+	Pseudomonas_590
+	'Thiopseudomonas.denitrificans_1255'
+	Pseudomonas_1096
+	Pseudomonas_54
+	Pseudomonas_80
+	Pseudomonas_519
+	Pseudomonas_559
+	Pseudomonas_634
+	Pseudomonas_911
+	Pseudomonas_572
+	Pseudomonas_313
+	Pseudomonas_322
+	Pseudomonas_557
+	Pseudomonas_155
+	Pseudomonas_332
+	Pseudomonadaceae_97
+	Pseudomonadaceae_215
+	Pseudomonadaceae_204
+	Pseudomonadaceae_167
+	Pseudomonadaceae_317
+	Pseudomonadaceae_259
+	Pseudomonadaceae_94
+	Pseudomonadaceae_180
+	Pseudomonadaceae_173
+	Pseudomonadaceae_123
+	Pseudomonadaceae_140
+	Pseudomonadaceae_144
+	Pseudomonadaceae_87
+	Pseudomonadaceae_273
+	Pseudomonadaceae_114
+	Pseudomonadaceae_228
+	Pseudomonas_31
+	Pseudomonas_50
+	Pseudomonas_404
+	Pseudomonas_19
+	Pseudomonas_18
+	Pseudomonas_107
+	Pseudomonas_651
+	Pseudomonas_212
+	Pseudomonadaceae_547
+	Pseudomonas_128
+;
+end;
+
+begin trees;
+	tree tree_1 = [&R] (Pseudomonas_239[&!rotate=false,!color=#-16777216]:0.004176977053135918,(Pseudomonas_3[&!rotate=false,!color=#-16777216]:1.00000050002909E-6,((Pseudomonas_240[&!rotate=true,!color=#-16777216]:0.0043333499399186015,(Pseudomonas_25[&!rotate=true,!color=#-16777216]:1.00000050002909E-6,(((Pseudomonas_590[&!color=#-16777216,!rotate=true]:0.03114099699498087,('Thiopseudomonas.denitrificans_1255'[&!color=#-16777216,!rotate=true]:0.06408153118860181,Pseudomonas_1096[&!color=#-16777216,!rotate=true]:0.01340425616926129)[&!color=#-16777216,!rotate=true,ml=60]:0.004706125340484578)[&!color=#-16777216,!rotate=true,ml=69]:0.008978575243350283,Pseudomonas_54[&!color=#-16777216,!rotate=true]:0.008016596256382454)[&!color=#-16777216,!rotate=true,ml=60]:0.008938391932984553,((((Pseudomonas_80[&!color=#-16777216,!rotate=true]:1.00000050002909E-6,(((Pseudomonas_519[&!color=#-16777216,!rotate=true]:0.0041278971160472406,Pseudomonas_559[&!color=#-16777216,!rotate=true]:0.004129653544368428)[&!color=#-16777216,!rotate=true,ml=4]:1.00000050002909E-6,(((Pseudomonas_634[&!color=#-16777216,!rotate=true]:0.0041284175512320935,Pseudomonas_911[&!color=#-16777216,!rotate=true]:0.004129639874789432)[&!color=#-16777216,!rotate=true,ml=7]:1.00000050002909E-6,(Pseudomonas_572[&!color=#-16777216,!rotate=true]:0.004129628436459612,Pseudomonas_313[&!color=#-16777216,!rotate=true]:0.004137658952331643)[&!color=#-16777216,!rotate=true,ml=10]:1.00000050002909E-6)[&!color=#-16777216,!rotate=true,ml=1]:1.00000050002909E-6,((Pseudomonas_322[&!color=#-16777216,!rotate=true]:0.004137651097135707,Pseudomonas_557[&!color=#-16777216,!rotate=true]:0.004133801238890945)[&!color=#-16777216,!rotate=true,ml=7]:1.00000050002909E-6,(Pseudomonas_155[&!color=#-16777216,!rotate=true]:0.004139928438889881,Pseudomonas_332[&!color=#-16777216,!rotate=true]:0.0041376327583193115)[&!color=#-16777216,!rotate=true,ml=4]:1.00000050002909E-6)[&!color=#-16777216,!rotate=true,ml=0]:1.00000050002909E-6)[&!color=#-16777216,!rotate=true,ml=0]:1.00000050002909E-6)[&!color=#-16777216,!rotate=true,ml=24]:1.00000050002909E-6,(Pseudomonadaceae_97[&!name="FL",!rotate=true,!color=#-16777216]:1.00000050002909E-6,(Pseudomonadaceae_215[&!name="FL",!color=#-16777216,!rotate=true]:1.00000050002909E-6,(Pseudomonadaceae_204[&!name="FL",!color=#-16777216,!rotate=true]:0.004072833515507607,(Pseudomonadaceae_167[&!name="FL",!color=#-16777216,!rotate=true]:1.00000050002909E-6,(Pseudomonadaceae_317[&!name="FL",!color=#-16777216,!rotate=true]:0.008108946826999188,((Pseudomonadaceae_259[&!name="FL",!color=#-16777216,!rotate=true]:0.00805248206710007,((Pseudomonadaceae_94[&!name="FL",!color=#-16777216,!rotate=true]:1.00000050002909E-6,((Pseudomonadaceae_180[&!name="FL",!color=#-16777216,!rotate=true]:1.00000050002909E-6,Pseudomonadaceae_173[&!name="FL",!color=#-16777216,!rotate=true]:0.003917309702143889)[&!name="FL",!color=#-16777216,!rotate=true,ml=35]:0.003939599314150039,((Pseudomonadaceae_123[&!name="FL",!color=#-16777216,!rotate=true]:1.00000050002909E-6,Pseudomonadaceae_140[&!name="FL",!color=#-16777216,!rotate=true]:0.003929484204567333)[&!name="FL",!color=#-16777216,!rotate=true,ml=42]:0.003942079857310328,Pseudomonadaceae_144[&!name="FL",!color=#-16777216,!rotate=true]:1.00000050002909E-6)[&!name="FL",!color=#-16777216,!rotate=true,ml=11]:1.00000050002909E-6)[&!name="FL",!color=#-16777216,!rotate=true,ml=36]:0.003951386167672082)[&!name="FL",!color=#-16777216,!rotate=true,ml=67]:0.003982875520641492,Pseudomonadaceae_87[&!name="FL",!color=#-16777216,!rotate=true]:1.00000050002909E-6)[&!name="FL",!color=#-16777216,!rotate=true,ml=40]:1.00000050002909E-6)[&!name="FL",!color=#-16777216,!rotate=true,ml=27]:0.0039939760520035315,((Pseudomonadaceae_273[&!name="FL",!color=#-16777216,!rotate=true]:0.016460020700616564,Pseudomonadaceae_114[&!name="FL",!rotate=true,!color=#-16777216]:0.004006950713162558)[&!name="FL",!color=#-16777216,!rotate=true,ml=2]:1.00000050002909E-6,Pseudomonadaceae_228[&!name="FL",!color=#-16777216,!rotate=true]:0.004040220211678629)[&!name="FL",!color=#-16777216,!rotate=true,ml=10]:1.00000050002909E-6)[&!name="FL",!color=#-16777216,!rotate=true,ml=17]:0.0040358749241743135)[&!name="FL",!color=#-16777216,!rotate=true,ml=48]:0.004122992027229803)[&!name="FL",!color=#-16777216,!rotate=true,ml=17]:0.004062842524035467)[&!name="FL",!color=#-16777216,!rotate=true,ml=0]:1.00000050002909E-6)[&!name="FL",!color=#-16777216,!rotate=true,ml=29]:0.004108353336444599)[&!name="FL",!color=#-16777216,!rotate=true,ml=100]:0.03961859535772512)[&!color=#-16777216,!rotate=true,ml=85]:0.012525092218272057)[&!color=#-16777216,!rotate=true,ml=40]:0.004129245805462988,Pseudomonas_31[&!color=#-16777216,!rotate=false]:0.0041235489445403005)[&!color=#-16777216,!rotate=false,ml=22]:1.00000050002909E-6,Pseudomonas_50[&!color=#-16777216,!rotate=false]:0.004167249647243906)[&!color=#-16777216,!rotate=false,ml=94]:0.012654533615958696,(Pseudomonas_404[&!color=#-16777216,!rotate=false]:0.004243044546136251,Pseudomonas_19[&!color=#-16777216,!rotate=false]:1.00000050002909E-6)[&!color=#-16777216,!rotate=false,ml=66]:1.00000050002909E-6)[&!color=#-16777216,!rotate=false,ml=44]:0.008380129049521958)[&!rotate=true,!color=#-16777216,ml=55]:1.00000050002909E-6)[&!rotate=true,!color=#-16777216,ml=58]:0.0041747825924570965)[&!rotate=true,!color=#-16777216,ml=8]:1.00000050002909E-6,(((Pseudomonas_18[&!rotate=true,!color=#-16777216]:0.008422572582809873,Pseudomonas_107[&!rotate=true,!color=#-16777216]:1.00000050002909E-6)[&!rotate=true,!color=#-16777216,ml=82]:0.008701214771830794,Pseudomonas_651[&!rotate=true,!color=#-16777216]:0.0213527182321162)[&!rotate=true,!color=#-16777216,ml=33]:1.00000050002909E-6,(Pseudomonas_212[&!rotate=true,!color=#-16777216]:0.008371630465090296,Pseudomonadaceae_547[&!rotate=true,!color=#-16777216]:0.058053270752577914)[&!rotate=true,!color=#-16777216,ml=35]:1.00000050002909E-6)[&!rotate=true,!color=#-16777216,ml=6]:1.00000050002909E-6)[&!rotate=false,!color=#-16777216,ml=3]:1.00000050002909E-6)[&!rotate=false,!color=#-16777216,ml=12]:1.00000050002909E-6,Pseudomonas_128[&!rotate=false,!color=#-16777216]:0.004174182657079932);
+end;
+
+begin figtree;
+	set appearance.backgroundColorAttribute="Default";
+	set appearance.backgroundColour=#-1;
+	set appearance.branchColorAttribute="User selection";
+	set appearance.branchLineWidth=1.0;
+	set appearance.branchMinLineWidth=0.0;
+	set appearance.branchWidthAttribute="Fixed";
+	set appearance.foregroundColour=#-16777216;
+	set appearance.selectionColour=#-2144520576;
+	set branchLabels.colorAttribute="User selection";
+	set branchLabels.displayAttribute="Branch times";
+	set branchLabels.fontName="sansserif";
+	set branchLabels.fontSize=8;
+	set branchLabels.fontStyle=0;
+	set branchLabels.isShown=false;
+	set branchLabels.significantDigits=4;
+	set layout.expansion=0;
+	set layout.layoutType="RECTILINEAR";
+	set layout.zoom=0;
+	set legend.attribute="ml";
+	set legend.fontSize=10.0;
+	set legend.isShown=false;
+	set legend.significantDigits=4;
+	set nodeBars.barWidth=4.0;
+	set nodeBars.displayAttribute=null;
+	set nodeBars.isShown=false;
+	set nodeLabels.colorAttribute="User selection";
+	set nodeLabels.displayAttribute="ml";
+	set nodeLabels.fontName="sansserif";
+	set nodeLabels.fontSize=8;
+	set nodeLabels.fontStyle=0;
+	set nodeLabels.isShown=false;
+	set nodeLabels.significantDigits=3;
+	set nodeShape.colourAttribute="User selection";
+	set nodeShape.isShown=false;
+	set nodeShape.minSize=10.0;
+	set nodeShape.scaleType=Width;
+	set nodeShape.shapeType=Circle;
+	set nodeShape.size=4.0;
+	set nodeShape.sizeAttribute="Fixed";
+	set polarLayout.alignTipLabels=false;
+	set polarLayout.angularRange=0;
+	set polarLayout.rootAngle=0;
+	set polarLayout.rootLength=100;
+	set polarLayout.showRoot=true;
+	set radialLayout.spread=0.0;
+	set rectilinearLayout.alignTipLabels=true;
+	set rectilinearLayout.curvature=0;
+	set rectilinearLayout.rootLength=100;
+	set scale.offsetAge=0.0;
+	set scale.rootAge=1.0;
+	set scale.scaleFactor=1.0;
+	set scale.scaleRoot=false;
+	set scaleAxis.automaticScale=true;
+	set scaleAxis.fontSize=8.0;
+	set scaleAxis.isShown=false;
+	set scaleAxis.lineWidth=1.0;
+	set scaleAxis.majorTicks=1.0;
+	set scaleAxis.origin=0.0;
+	set scaleAxis.reverseAxis=false;
+	set scaleAxis.showGrid=true;
+	set scaleBar.automaticScale=true;
+	set scaleBar.fontSize=10.0;
+	set scaleBar.isShown=true;
+	set scaleBar.lineWidth=1.0;
+	set scaleBar.scaleRange=0.0;
+	set tipLabels.colorAttribute="User selection";
+	set tipLabels.displayAttribute="Names";
+	set tipLabels.fontName="sansserif";
+	set tipLabels.fontSize=8;
+	set tipLabels.fontStyle=0;
+	set tipLabels.isShown=true;
+	set tipLabels.significantDigits=4;
+	set trees.order=false;
+	set trees.orderType="increasing";
+	set trees.rooting=true;
+	set trees.rootingType="User Selection";
+	set trees.transform=false;
+	set trees.transformType="cladogram";
+end;
+

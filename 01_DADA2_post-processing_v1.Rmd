@@ -1,0 +1,689 @@
+---
+title: "STEP 2: DADA2 Post-processing"
+output: html_notebook
+---
+
+This notebook details several data processing steps requiring decisions following output of ASV and taxonomy tables from the `dada2` pipeline (Step 1). The final outputs are the bacterial ASV table with host-derived chloroplast and mitochondria ASVs vetted and summed up, as well as column with the sum of all fungal sequences assigned by their mtDNA hits to `nr` via BLAST.
+
+```{r HEADER, message=FALSE, warning=FALSE, include=FALSE}
+library(here)
+library(taxize) # must be >0.9.2
+source(here("scripts/phy_header.R"))
+source(here("scripts/phy_functions.R"))
+```
+
+First we re-enter the data output from DADA2 pipeline from the **R** scripts found in notebook `01_DADA2_pipeline_v1.Rmd`:
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+data.path <- "/Users/phumph/Dropbox/Phyllosphere_project/analysis_phy/16S_seq/" # change to local data path for repeating this analysis.
+TAB <- read.csv(paste0(data.path,"seqs_through_pipe_v1.csv"),T)               # output from 01_DADA2_pipeline
+ASV <- read.csv(paste0(data.path,"dada2_ASV_table_v3.csv"),T, row.names = 1)  # output from 01_DADA2_pipeline
+TAX <- read.csv(paste0(data.path,"dada2_taxa_Silva_wSpp_uniques_v1.csv"),T)   # output from 01_DADA2_pipeline
+```
+
+First, we need to retain only samples relevant to the field studies relevant for the present analysis. This pipeline was used to identify ASVs across a wider range of samples than will be reported here.
+
+```{r, message=FALSE, warning=FALSE}
+# steps:
+  # 1. Import sample names that will be used
+  # 2. Import sample meta-data that will be used
+  # 3. prune ASV, TAB, and TAX rows accordingly. Return pruned versions of each.
+
+EL <- paste0(read.table(paste0(data.path,"EL_samples.txt"),F)[,1])
+NP <- paste0(read.table(paste0(data.path,"NPB_samples.txt"),F)[,1])
+
+#length(TAB[,1])
+#length(ASV[,1])
+
+ASV_sample_names <- row.names(ASV)[row.names(ASV) %in% c(EL,NP)]
+TAB2 <- dplyr::filter(TAB, X %in% c(EL,NP))
+ASV2 <- dplyr::filter(ASV, rownames(ASV) %in% c(EL,NP))
+
+#length(TAB2[,1])
+#length(ASV2[,1])
+```
+
+We have a total of `r length(ASV2[,1])` samples spread across the two field sites (EL and NPB). For these libraries, let's examine the reads that made it through the pipeline:
+
+```{r, fig.height=2, fig.width=6, message=FALSE, warning=FALSE}
+track2 <- melt(TAB2)
+
+track.p1 <- ggplot(track2, aes(x = variable, y = log(value,10), group = X, alpha = 0.1)) + 
+  geom_line(col = "midnightblue") + 
+  xlab("") + ylab("log10 reads") + theme_phy1() +
+  theme(legend.position = "none")
+
+track.p2 <- ggplot(data.frame(TAB2), aes(x = nonchim/input)) + 
+  geom_histogram(bins = 40) + 
+  xlab("prop. of reads at endpoint") + theme_phy1()
+
+pdf(file = here("figs/reads_through_pipe.pdf"), width = 6, height = 2)
+  ggarrange(plotlist = list(track.p1,track.p2), ncol = 2)
+dev.off()
+
+ggarrange(plotlist = list(track.p1,track.p2), ncol = 2)
+```
+
+Now let's prune all ASVs that do not occur in $\geq 2$ samples. This automatically deals with all singleton ASVs.
+
+```{r, message=FALSE, warning=FALSE}
+# prune ASVs from TAX and ASV2:
+# define prevalence
+cm <- as.matrix(ASV2)
+cm[cm != 0] <- 1
+prevs <- colSums(cm)
+# identify sequences found in only 1 library:
+singletons <- prevs[prevs < 1]
+
+# remove these OTUs from ASV2 as well as TAX. Need to find row indexes for TAX, since no sequence as col.
+rownames(TAX) <- names(ASV2)
+TAX2 <- dplyr::filter(TAX, !rownames(TAX) %in% names(singletons))
+rownames(TAX2) <- TAX2[,'X']
+ASV3 <- ASV2[,!names(ASV2) %in% names(singletons)]
+```
+
+This removed `r length(singletons)` ASVs from the data, leaving us with `r length(ASV3[1,])` total ASVs. This reduced ASV set still includes host-derived ASVs from the chloroplast and mitochondria. We will want to retain vetted host-derived 16S counts while excluding spurious chloroplast hits as well as non-host mitochondrial hits (e.g. fungal mtDNA reads). The latter category can be totalled to represent a fungal category that itself may vary across samples in meaningful ways.
+
+### Dealing with host-derived ASVs
+
+The first step is to increase our taxonomic resolution on any putatively host-derived ASV. We start by pulling out all of the ASVs with an RDP-defined hit to chloroplast or mitochondria:
+
+```{r}
+cp <- grep("Chloroplast", TAX2[,'unique.id'])
+mt <- grep("Mitochondria", TAX2[,'unique.id'])
+```
+
+We found a total of `r length(cp)` cpDNA and `r length(mt)` mtDNA ASVs. We're going to export the ASV sequences of each and ensure they hit to *Cardamine* spp. (or other Brassicaceae like Arabidopsis) in `nr` via `blastn`. Let's first perform manual BLAST with default parameters and return the results for the 10 best hits:
+
+```{r}
+# export sequences for mt and cp ASVs (FASTA format)
+cp_seq_name <- paste0('>seq',rownames(TAX2)[cp])
+cp_seqs <- rownames(TAX2)[cp]
+
+mt_seq_name <- paste0('>seq',rownames(TAX2)[mt])
+mt_seqs <- rownames(TAX2)[mt]
+
+# create interleaved character vectors of sequences and names:
+MT <- character(length(mt_seqs) * 2)
+MT[c(TRUE, FALSE)] <- mt_seq_name
+MT[c(FALSE, TRUE)] <- mt_seqs
+writeLines(MT, con = paste0(data.path,"mtASV_seqs.fasta"), sep = "\n")
+
+CP <- character(length(cp_seqs) * 2)
+CP[c(TRUE, FALSE)] <- cp_seq_name
+CP[c(FALSE, TRUE)] <- cp_seqs
+writeLines(CP, con = paste0(data.path,"cpASV_seqs.fasta"), sep = "\n")
+
+# performed manual blast via ncbi web interface with default parameters for each file separately, setting number of aligned results to 10.
+# export each as a as Hit Table ("cp_hit_table.csv"", "mt_hit_table.csv").
+```
+
+Now we can re-import the Hit tables saved as `.csv` back into R and parse the results:
+
+```{r}
+# load R functions to retrieve taxa info from NCBI GI IDs from BLAST results:
+#devtools::install_github("ropensci/taxize")
+library(taxize)
+
+# import blastn hit tables of results
+mtbr <- read.csv(paste0(data.path,"mt_hit_table.csv"),
+                 col.names=c("seqid", "subject", "aa", "bb", "identity", "coverage", "mismatches", "gaps", "seq_start", "seq_end", "sub_start", "sub_end", "e", "score"))
+cpbr <- read.csv(paste0(data.path,"cp_hit_table.csv"),
+                 col.names=c("seqid", "subject", "aa", "bb", "identity", "coverage", "mismatches", "gaps", "seq_start", "seq_end", "sub_start", "sub_end", "e", "score"))
+
+# if you have trouble here, check the colnames to make sure they match.
+
+# look at nuber of results returned per query:
+#length(sort(unique(mtbr[,'seqid']))) # should be same length as input quert list
+#length(sort(unique(cpbr[,'seqid']))) # should be same length as input quert list
+
+# add hit.num factor which holds position of match for each unique query:
+write.hit.num <- function(df){
+  df[,'hit.num'] <- NA
+  uniques <- unique(df[,'seqid'])
+  for(s in 1:length(uniques)){
+    len <- length(df[,'seqid'][df[,'seqid'] == paste0(uniques[s])])
+    df[,'hit.num'][df[,'seqid'] == paste0(uniques[s])] <- c(1:len)
+  }
+return(df)
+}
+
+# write hit number in order for later ranking taxonomic matches
+mtbr <- write.hit.num(mtbr)
+cpbr <- write.hit.num(cpbr)
+
+# get NCBI taxonomy ID from genbank ID:
+# first get genbank string from subject col:
+mtbr[,'gi'] <- sapply(mtbr[,'subject'],function(x) unlist(strsplit(paste0(x), split = '\\|'))[2])
+cpbr[,'gi'] <- sapply(cpbr[,'subject'],function(x) unlist(strsplit(paste0(x), split = '\\|'))[2])
+
+# define function to assign taxonomy to the GI numbers of the hits
+get_taxonomy <- function(x) {
+  paste0(genbank2uid(x, key = ENTREZ_KEY)[[1]][1]) # taxonomy ID
+}
+
+# now get taxID from NCBI using taxize function genbank2uid
+# grab unique gi numbers:
+mtbr_gi <- data.frame(gi = unique(mtbr[,'gi']), tax_ID = NA) # n = 593
+cpbr_gi <- data.frame(gi = unique(cpbr[,'gi']), tax_ID = NA) # n = 243
+
+mtbr_gi[,'tax_ID'] <- sapply(mtbr_gi[,'gi'], get_taxonomy) # this is slow, since function makes n queries to ncbi. ~3 min.
+cpbr_gi[,'tax_ID'] <- sapply(cpbr_gi[,'gi'], get_taxonomy) # this is slow, since function makes n queries to ncbi. ~2 min.
+
+# classify all taxon_IDs
+# NCBI has a ceiling on the number of requests per second without an API key. I've requested my own key via
+# https://www.ncbi.nlm.nih.gov/account/
+# this change went into effect May 2018 (https://www.ncbi.nlm.nih.gov/books/NBK25500/ for documentation)
+# see https://github.com/ropensci/taxize/issues/666 for more details (as of 26 June 2018)
+# also see taxize e-book details here: https://ropensci.github.io/taxize-book/authentication.html
+# ENTREZ_KEY stored in .Renviron file in local git repo dir
+mt_class.all <- classification(unique(mtbr_gi[,'tax_ID']), callopts = list(), return_id = TRUE, db = 'ncbi')
+#cpbr_gi2 <- cpbr_gi[cpbr_gi[,'tax_ID']!="NA",]
+cp_class.all <- classification(unique(cpbr_gi[,'tax_ID']), callopts = list(), return_id = TRUE, db = 'ncbi')
+
+# turn list into data.frame
+mt_df.all <- do.call(rbind, mt_class.all)
+cp_df.all <- do.call(rbind, cp_class.all)
+
+# merge to match GI number with tax_ID, and then grab taxonomic name that matches tax_ID
+# mtbr.all  <- merge(mtbr,mtbr_gi, by = 'gi', sort = F)
+mtbr[,'tax_ID'] <- sapply(mtbr[,'gi'], function(x) mtbr_gi[,'tax_ID'][match(x, mtbr_gi[,'gi'])])
+mtbr[,'name']   <- sapply(mtbr[,'tax_ID'], function(x) mt_df.all[,'name'][match(x, mt_df.all[,'id'])])
+
+cpbr[,'tax_ID'] <- sapply(cpbr[,'gi'], function(x) cpbr_gi[,'tax_ID'][match(x, cpbr_gi[,'gi'])])
+cpbr[,'name']   <- sapply(cpbr[,'tax_ID'], function(x) cp_df.all[,'name'][match(x, cp_df.all[,'id'])])
+
+# now determine whether for each unique sequence there is a Cardamine or Arabidopsis in the list:
+# first write function to determine whether hits are among target taxa, corresponding to host-derived ASV of not.
+collapse_taxa <- function(df, targets = c("Cardamine", "Arabidopsis")){
+  
+  # grab reduced data.frame of best hits and give the other hits the chance to unseat them.
+  dfres <- dplyr::filter(df, hit.num == 1) 
+  
+  for (s in 1:length(unique(df[,'seqid']))){
+    # define rows of df that match unique seqid==s
+    df2 <- df[df[,'seqid'] == unique(df[,'seqid'])[s],]
+    
+    # grab grep results in 'name' vector that hit targets
+    #ghits <- grep(paste0(targets,collapse='|'),df2[,'name'], value = T)
+    ghits <- grep(paste0(targets,collapse='|'),df2[,'name'], value = F)
+    
+    # if no hits, take first entry
+    if (length(ghits) == 0){
+      if (length(grep('uncultured', df2[,'name']))==0){
+        dfres[s,] <- df2[1,] # take top hit by default
+      } else{
+        # take top hit that is NOT 'uncultured' just to break up the spurious taxonomic binning of disparate 'uncultured' ASV
+        # define rows to exclude:
+        incl <- grep('uncultured', df2[,'name'], invert=TRUE)
+        if (length(incl) == 0){
+          dfres[s,] <- df2[1,] # if all hits grep to uncultured, might as well take first one.
+        } else{
+          dfres[s,] <- df2[incl[1],] # if not all rows grep to uncultured, take the first that doesn't.
+        }
+      }
+    } else{ 
+      dfres[s,] <- df2[ghits[1],] # if >0 hits, take first among them (will be best hit)
+    }
+  }  
+  return(dfres) # return annotated results df with nrow = unique(input ASVs) of input df
+}
+
+# lets give it a try:
+cpres <- collapse_taxa(cpbr)
+mtres <- collapse_taxa(mtbr)
+
+# compare to un-collapsed version:
+cpres0 <- dplyr::filter(cpbr, hit.num == 1)
+mtres0 <- dplyr::filter(mtbr, hit.num == 1)
+
+# account for mismatches:
+test_df  <- data.frame(old = cpres0[,'name'], new = cpres[,'name'])
+test_df2 <- data.frame(old = mtres0[,'name'], new = mtres[,'name'])
+
+# calculate number of mismatches:
+n_mis <-  paste0(table(paste0(test_df[,'old']) != paste0(test_df[,'new']))[2])
+n_mis2 <- paste0(table(paste0(test_df2[,'old']) != paste0(test_df2[,'new']))[2])
+
+## run only during calibration and script checking:
+## Let's just run some checks on these non-mustard cpASVs to make sure the script didn't overlook anything:
+# strep_seq <- paste0(unique(cpbr[grep("Strepto", cpbr[,'name']),'seqid']))
+# cpbr[cpbr[,'seqid'] == strep_seq,]
+# cpres[cpres[,'seqid'] == strep_seq,] # this checks out. Looks like the name in fact got replaced. Good!
+# 
+## check out this Artemisia ASV:
+# art_seqs <- paste0(unique(cpres[cpres[,'name'] == 'Artemisia capillaris', 'seqid']))
+# cpbr[cpbr[,'seqid'] %in% art_seqs,] # OK this checks out too--no Brassicaceae up in this BLAST set.
+
+### next steps: I want to see a tree and I want to see abundances...
+# need to re-run classification on final set of tax_ID:
+mt_class.fin <- classification(unique(mtres[,'tax_ID']), callopts = list(), return_id = TRUE, db = 'ncbi')
+cp_class.fin <- classification(unique(cpres[,'tax_ID']), callopts = list(), return_id = TRUE, db = 'ncbi')
+
+# make these classifications into taxonomic tree for visual inspection:
+mt_tree <- class2tree(mt_class.fin)
+cp_tree <- class2tree(cp_class.fin)
+```
+
+Below is a plot of the identified mitochondrial sequences present in the dataset, broken down by lowest-level NCBI-based taxonomic hierarchy:
+```{r, fig.height=10, fig.width=7, message=FALSE, warning=FALSE}
+plot(mt_tree, cex = 0.7, main = "mitochondria sequences")
+```
+
+Note the plethora of fungal sequences. The plant mtDNA sequences clade out around *Arabidopsis thaliana* (which is our *de facto* focal taxon, since the *Cardamine macrophylla* mitochondrial genome has not apparently been annotated). We will exclude all non-Arabidopsis plant mtDNA ASVs and sum all of the fungal mtDNA ASVs into a fungal class that may also co-vary with measured covariates in our experiments. Note also that the "uncultured" taxa sister to the rest may not actually be sister when considering the molecular phylogeny of the mt ASVs themselves. We will return to this later and place these ASVs to determine how to deal with them.
+
+And now for the chloroplast sequences:
+
+```{r, fig.height=3.5, fig.width=7, message=FALSE, warning=FALSE}
+plot(cp_tree, cex = 0.7, main = "chloroplast sequences")
+```
+
+We will exclude all non-*Cardamine macrophylla* cpDNA ASVs. This taxon has the closest sequenced chloroplast genome to *C. cordifolia.* We are grateful that it is in the NCBI database (Ren et al. 2017)[https://link.springer.com/article/10.1007/s12686-017-0880-4].
+
+We must first re-map this taxonomic information back onto the ASVs in order to plot the abundance of each of these taxonomic classes. We should see that *Cardamine* or *Arabidopsis* hits should be overwhelmingly abundant, for both cp and mtDNA, while others will comprise a relatively small proportion of the data.
+
+```{r}
+# sum up all ASV counts across all samples
+ASV_sums <- colSums(ASV3)
+
+# subset this named vector of sums by the cp and mt ASVs:
+cpASVs <- data.frame(tot = ASV_sums[paste0('seq',names(ASV_sums)) %in% paste0(cpres[,'seqid'])])
+mtASVs <- data.frame(tot = ASV_sums[paste0('seq',names(ASV_sums)) %in% paste0(mtres[,'seqid'])])
+
+cpASVs[,'seqid'] <- paste0('seq',rownames(cpASVs))
+mtASVs[,'seqid'] <- paste0('seq',rownames(mtASVs))
+
+# add abundance data to cpbr3 and mtbr3:
+mtres[,'tot'] <- sapply(mtres[,'seqid'], function(x) mtASVs[,'tot'][match(x, mtASVs[,'seqid'])])
+cpres[,'tot'] <- sapply(cpres[,'seqid'], function(x) cpASVs[,'tot'][match(x, cpASVs[,'seqid'])])
+# mtres2 <- merge(mtres, mtASVs, by = 'seqid', sort = F)
+# cpres2 <- merge(cpres, cpASVs, by = 'seqid', sort = F)
+
+# total by name
+mtres2 <- data.frame(dplyr::group_by(mtres, tax_ID) %>% summarise(total = sum(tot)) %>% arrange(desc(total)))
+cpres2 <- data.frame(dplyr::group_by(cpres, tax_ID) %>% summarise(total = sum(tot)) %>% arrange(desc(total)))
+
+mtres2[,'f'] <- mtres2[,'total']/sum(mtres2[,'total'])
+cpres2[,'f'] <- cpres2[,'total']/sum(cpres2[,'total'])
+
+# merge back with names
+mtres2[,'name'] <- sapply(mtres2[,'tax_ID'], function(x) mtres[,'name'][match(x, mtres[,'tax_ID'])])
+mtres2[,'name'] <- factor(mtres2[,'name'], levels = mtres2[,'name'])
+cpres2[,'name'] <- sapply(cpres2[,'tax_ID'], function(x) cpres[,'name'][match(x, cpres[,'tax_ID'])])
+cpres2[,'name'] <- factor(cpres2[,'name'], levels = cpres2[,'name'])
+```
+
+Below is a plot of the mtDNA ASVs summed by taxonomic name:
+```{r fig.height=8, fig.width=5, message=FALSE, warning=FALSE}
+# make plots:
+ggplot(mtres2, aes(x = name, y = log(total,10))) + 
+  geom_bar(stat = "identity", col = "gray40") + theme_phy1() + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0)) +
+  coord_flip()
+```
+
+And now for the cpDNA ASVs, similarly binned by NCBI lowest taxon:
+```{r, fig.height=2.25, fig.width=5, message=FALSE, warning=FALSE}
+ggplot(cpres2, aes(x = name, y = log(total,10))) + 
+  geom_bar(stat = "identity", col = "gray40") + theme_phy1() + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0)) +
+  coord_flip()
+```
+
+### Phylogenies of mt and cp ASVs
+
+As a final sanity-check, let's export all of these vetted ASVs and produce a phylogeny to better understand whether we have appropriately captured the evolutionary distances among these sequences. It is possible that the "uncultured bacterium" assigned taxonomy is masking the fact that these samples represent a diverse set that nest across the cp-derived 16S sequences in our dataset. We will generate ML phylogenies of the unique cp ASVs and designate a criteria for lumping ASVs into the Cardamine-derived set. 
+
+First we export the unique cp ASVs and align them using `mafft`:
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+# export sequences for mt and cp ASVs (FASTA format)
+CP <- character(length(cpres[,1]) * 2)
+CP[c(TRUE, FALSE)] <- paste0('>',sample(length(cpres[,1]),length(cpres[,1]),replace=F),'_',cpres[,'tot'],'_',cpres[,'name'],'_',cpres[,'tax_ID'])
+CP[c(FALSE, TRUE)] <- gsub('seq','',cpres[,'seqid'])
+writeLines(CP, con = paste0(data.path,"cpASV_best_hits.fasta"), sep = "\n")
+
+MT <- character(length(mtres[,1]) * 2)
+MT[c(TRUE, FALSE)] <- paste0('>',sample(length(mtres[,1]),length(mtres[,1]),replace=F),'_',mtres[,'tot'],'_',mtres[,'name'],'_',mtres[,'tax_ID'])
+MT[c(FALSE, TRUE)] <- gsub('seq','',mtres[,'seqid'])
+writeLines(MT, con = paste0(data.path,"mtASV_best_hits.fasta"), sep = "\n")
+
+system("mafft cpASV_best_hits.fasta > cpASV_best_hits.aln", ignore.stdout=TRUE)
+system("mafft mtASV_best_hits.fasta > mtASV_best_hits.aln", ignore.stdout=TRUE)
+```
+
+Let's re-import the aligned files and estimate some phylogenetic trees in R:
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+# load alignment
+cpdat = read.phyDat(paste0(data.path,"cpASV_best_hits.aln"), format = "fasta")
+
+# create distance matrix of aligned sequences
+dm <- dist.ml(cpdat)
+
+# starting tree via neighbor joining
+tree <- NJ(dm)
+
+# compare model fits to nucleotide variation data
+mt <- modelTest(cpdat, tree=tree, multicore=TRUE)
+mt <- mt[order(mt$AICc),]
+
+# choose best model from the table according to AICc
+bestmodel <- mt[order(mt$AICc),'Model'][1]
+
+## re-run optimization and generate bootstrap support for nodes
+env = attr(mt, "env")
+fitStart = eval(get(bestmodel, env), env)
+
+# run ML optimization
+fit = optim.pml(fitStart, rearrangement = "stochastic", optGamma=TRUE, optInv=TRUE, model="GTR")
+
+# perform bootstrap simulations
+bs = bootstrap.pml(fit, bs=100, optNni=TRUE, multicore=TRUE)
+
+# if you want to see the consensus topology network, un-comment and run the following:
+# cnet <- consensusNet(bs, p=0.2)
+# plot(cnet, "2D", show.edge.label=TRUE, cex= 0.5)
+```
+
+Let's plot the best ML tree:
+
+```{r, fig.height=10, fig.width=10, message=FALSE, warning=FALSE}
+# plot consensus tree with ML node labels
+# pdf(file = "cpASV_ML_tree_1.pdf", width = 8, height = 8)
+#   plotBS(midpoint(fit$tree), bs, p = 80, type="p", cex = 0.6, main = "ML phylogeny of putatively host-derived cp ASVs")
+# dev.off()
+plotBS(midpoint(fit$tree), bs, p = 80, type="p", cex = 0.6, main = "ML phylogeny of putatively host-derived cp ASVs")
+```
+
+This is a mid-point rooted tree, which makes some of the relationships in the middle hard to see. But we *can* see a well-supported node clading out sister to the major node up top, which appears to contain only non-identified and green algal cp 16S hits (also includes a Pennate diatom sequence). These ASVs will be removed. Besides that, there is a second clade of cp ASVs that contain no *Cardamine*-annotated ASVs; the rooted tree gives the appearance that they are nested within the large *Cardamine*-derived ASV clade, but there is a long branch separating this group from any of the *Cardamine* sequences. We will also prune these ASVs from the table. As for the other ASVs that clade with *Cardamine*, there is a separate plant clade that is well-supported that likely corresponds to actual contaminating sequences in these libraries. In general, this topology strongly suggests that a reasonable way to proceed is to simply excude all cp ASVs that were not annotated as *Cardamine*.
+
+Excluding non-*Cardamine* cp ASVs removed `r round((1 - cpres2[1,'total']/sum(cpres2[,'total'])),4)*100` percent of the cp reads from the data, a negligible fraction.
+
+```{r}
+# define set of cp ASVs to retain
+# all Cardamine-annotated hits in cpres:
+cp_to_keep <- sapply(cpres[,'seqid'][grep("Cardamine", cpres[,'name'])], function(x) gsub('seq','',x)) # removes prepended 'seq' to correspond to names(ASV)
+cp_to_exclude <- cp_seqs[!(cp_seqs %in% cp_to_keep)]
+
+# subset ASV matrix to export Cardamine cp ASVs for phylogeographic analyses:
+cpASV <- ASV3[,names(ASV3) %in% cp_to_keep]
+row.names(cpASV) <- ASV_sample_names
+write.csv(cpASV, file = paste0(data.path,"cpASVs_Cardamine_only.csv"),quote=F)
+
+# sum up cpASVs into composite column, appended to ASV2:
+ASV3[,'cp'] <- rowSums(ASV3[,names(ASV3) %in% cp_to_keep])
+
+# remove all cpASV columns
+ASV3 <- ASV3[,!(names(ASV3) %in% cp_seqs)]
+row.names(ASV3) <- ASV_sample_names
+write.csv(ASV3, file = paste0(data.path,"ASV3_REDUCED_with_cp.csv"),quote=F)
+```
+
+In a later analysis, we will re-run a ML phylogeny using the vetted *Cardamine* cp 16S sequences to test for geographic differentiation in haplotypes between NPB and EL populations. For now, we will repeat the above analysis for the mtASVs and construct our composite `mt` column for this host-derived organelle.
+
+```{r, fig.height=14, fig.width=8, message=FALSE, warning=FALSE}
+# load alignment
+mtdat = read.phyDat(paste0(data.path,"mtASV_best_hits.aln"), format = "fasta")
+
+# create distance matrix of aligned sequences
+dm.mt <- dist.ml(mtdat)
+
+# starting tree via neighbor joining
+tree.mt <- NJ(dm.mt)
+plot(tree.mt, cex = 0.6, main = "NJ tree of mt ASVs")
+# compare model fits to nucleotide variation data
+#mt <- modelTest(mtdat, tree=tree, model = c("K80"), G = TRUE, I = TRUE, multicore=TRUE)
+#mt <- mt[order(mt$AICc),]
+# 
+# # choose best model from the table according to AICc
+# bestmodel <- mt[order(mt$AICc),'Model'][1]
+# 
+# ## re-run optimization and generate bootstrap support for nodes
+# env = attr(mt, "env")
+# fitStart = eval(get(bestmodel, env), env)
+# 
+# # run ML optimization
+# fit = optim.pml(tree, rearrangement = "stochastic", optGamma=TRUE, optInv=TRUE, model="GTR")
+# 
+# # perform bootstrap simulations
+# bs = bootstrap.pml(fit, bs=100, optNni=TRUE, multicore=TRUE)
+```
+
+We can see from this NJ tree that the Arabidopsis sequences form a nice monophyletic clade, with a few low-abundance fungal hits clading out sister to the adjacent clade of other non-Brassicaceae mt sequences (i.e. the clade with *Populus* spp. and spinach). We will move forward and sum up the Arabidopsis ASVs, exclude the non-Arabidopsis plant-derived hits, and pool the remaining fungal mt ASVs as a single 'fungal' class.
+
+```{r}
+# grab mt ASV seqs that correspond to Arabidopsis:
+mt_to_keep <- sapply(mtres[,'seqid'][grep("Arabidopsis", mtres[,'name'])], function(x) gsub('seq','',x)) # n = 23
+
+# sum up into 'mt' column:
+ASV3[,'mt'] <- rowSums(ASV3[,names(ASV3) %in% mt_to_keep])
+
+# now grab all non-Arabidopsis plant sequences and remove them from the ASV table:
+mt_to_exclude <- c(108434,126429,141186,266767,3562,472368) # all have hits to plants. Manually read off the mt phylogeny above
+mt_to_exclude_seqs <- sapply(mtres[match(mt_to_exclude,mtres[,'tax_ID']),'seqid'], function(x) gsub('seq','',x)) # n = 6
+mt_to_fungi <- mt_seqs[!(mt_seqs %in% c(mt_to_keep,mt_to_exclude_seqs))] # n = 116
+
+# sum up fungal mtASVs into composite column, appended to ASV3:
+ASV3[,'fungi'] <- rowSums(ASV3[,names(ASV3) %in% mt_to_fungi])
+
+# subset ASV3 matrix to export fungal mt ASVs for downstream analyses:
+mtASV <- ASV3[,names(ASV3) %in% mt_to_fungi]
+row.names(mtASV) <- ASV_sample_names
+write.csv(mtASV, file = paste0(data.path,"mtASVs_fungi_only.csv"),quote=F)
+
+# now remove all mt_seqs from ASV3; move to ASV4; export
+ASV4 <- ASV3[,!(names(ASV3) %in% mt_seqs)]
+row.names(ASV4) <- ASV_sample_names
+write.csv(ASV4, file = paste0(data.path,"ASV4_REDUCED_with_cp_mt.csv"),quote=F)
+```
+
+### cp and mt ASV summary
+
+To review, we started with an ASV hit table with `r length(ASV3[1,])` unique ASVs, went down to `r length(ASV4[1,])` ASVs by collapsing down host-derived cpASVs and excluding spurious ones, and finally arrived at `r length(ASV4[1,])` unique ASVS, of which `r length(ASV4[1,])-2` are putatively bacterial. The cpASVs initially comprised `r round(sum(cpres2[,'total']) / (sum(ASV2)),2) * 100` percent of the total ASV dataset, and we removed only a small portion, `r round(sum(cpres2[-1,'total']) / sum(cpres2[,'total']) * 100, 2)` percent, or only `r sum(cpres2[-1,'total'])` reads. Host-derived cp counts now comprise `r round((sum(ASV4[,'cp']) / sum(ASV4)) * 100)` percent of the final dataset (`ASV4`).
+
+The mtASVs comprised roughly `r round(sum(mtres2[,'total']) / (sum(ASV2)),2) * 100` percent of the total ASV dataset, and removing `r length(mt_to_exclude)` non-host plant mtASVs excluded only `r sum(mtres2[mtres2[,'tax_ID'] %in% mt_to_exclude,'total'])` total reads from the dataset, a negligible amount. The host-derived mt counts comprise `r round((sum(ASV4[,'mt']) / sum(ASV4)) * 100)` percent of the final data, while the mtASVs binned to fungus now comprise `r round((sum(ASV4[,'fungi']) / sum(ASV4)) * 100)` pecent of the total dataset (`ASV4`). In summary, over half of the remaining sequence counts are either host-derived or fungal in origin.
+
+### Addressing the Bacterial ASVs
+
+Let's now inspect the putatively bacterial ASVs and decide whether we need to exclude any on the basis of poor database matches. First let's add back the bacterial taxonomic information from the RDP calls imported earlier in variable `TAX`:
+```{r}
+# grab the non-host and non-fungal ASVs from ASV4:
+# get rid of all bacterial singletons:
+cm4 <- as.matrix(ASV4)
+cm4[cm4 != 0] <- 1
+prevs <- colSums(cm4)
+# identify sequences found in only 1 library:
+singletons <- prevs[prevs < 2]
+ASV5 <- ASV4[,!names(ASV4) %in% names(singletons)]
+bASVs <- names(ASV5)[!(names(ASV5) %in% c('mt','cp','fungi'))] # n = 736
+
+# need to filter TAX to only include ASVs retained in ASV4
+bTAX <- dplyr::filter(TAX2, X %in% bASVs)
+
+# produce .fasta file for these OTUs to align and produce phylogeny with:
+BT <- character(length(bTAX[,1]) * 2)
+BT[c(TRUE, FALSE)] <- paste0('>',bTAX[,'unique.id'])
+BT[c(FALSE, TRUE)] <- paste0(bTAX[,'X'])
+writeLines(BT, con = paste0(data.path,"bASVs.fasta"), sep = "\n")
+
+### quick detour towards NJ tree of bASVs:
+system("mafft bASVs.fasta > bASVs.aln")
+bdat = read.phyDat(paste0(data.path,"bASVs.aln"), format = "fasta")
+bdm <- dist.ml(bdat) # takes a few minutes..
+btree <- NJ(bdm) # huge tree; renders poorly.
+```
+
+Let's plot the tree to take a look:
+```{r, fig.height=36, fig.width=10, message=FALSE, warning=FALSE, include=FALSE}
+pdf(file = paste0(data.path,"bASV_NJ_tree.pdf"), width = 12, height = 24)
+  plot(btree, cex = 0.3, main = "NJ tree of bacterial ASVs (non-singletons)")
+dev.off()
+# tree examined outside of R
+```
+
+From taking a quick look at the NJ tree (not reproduced here, but found in the `pwd`), we can see a ton of wacky 'Eukarya' bASVs, many of which likely correspond to rare chimeric or contaminating reads not screened out by `dada2`. Let's remove some of these wacky bASVs:
+```{r}
+# First, time to address the Eukaryotic hits:
+#euk <- grep('Eukar', bTAX[,'unique.id']) # right away we need to remove these sequences
+euk <- grep('Eukar', bTAX[,'Kingdom']) # right away we need to remove these sequences
+euk_seqs <- bTAX[euk,'X']
+```
+
+Let's take a look at the abundance of these Eukaryotic ASVs, which take up `r round(sum(ASV5[,names(ASV5) %in% euk_seqs]) / sum(ASV5) * 100,2)` percent of the dataset:
+
+```{r, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+# total up the counts of all these eukaryotic ASVs
+hist(log(as.vector(sort(colSums(ASV5[,names(ASV5) %in% euk_seqs]))),10), breaks = 50, main = "abundance of 'Eukaryota' bASV hits", xlab="log10 total reads", ylab="count", col = "gray50", las = 1)
+```
+
+We can see that only one of these ASVs has a substantial abundance, while the others hover at or below $10^3$. Let's take a closer look at these Eukaryota ASV blast results, and in particular, the highly abundance eukASV:
+
+```{r}
+# need to export and BLAST them to get some idea..
+ET <- character(length(euk_seqs) * 2)
+ET[c(TRUE, FALSE)] <- paste0('>',bTAX[euk,'unique.id'])
+ET[c(FALSE, TRUE)] <- paste0(bTAX[euk,'X'])
+# export all eukASVs
+writeLines(ET, con = paste0(data.path,"eukASVs.fasta"), sep = "\n")
+# export sequence of highly abundant eukASV:
+writeLines(ET[1:2], con = paste0(data.path,"eukASVs_most_abund.fasta"), sep = "\n")
+# performed manual BLAST using blastn to nr. 
+```
+
+Because the most abundant eukASV returned zero hits to `nr`, even with discontinuous megablast for dissimilar sequences, we will go ahead and discard this ASV from the data. Inspecting the top 50 blast hits for the remaining eukASVs reveals an assortment of poor hits ($70-90\%% identity) to fungal mt 16S, Arabidopsis genomic loci, or else there were no matches that passed even the default `blastn` criteria for returning a hit.
+
+The sensible, if slightly expedient, approach will be to simply exclude all bASVs annotated as Eukaryota on the basis of their (1) terrible database matches, and (2) low overall abundance.
+
+```{r}
+# just remove all Eukaryota bASVs
+ASV6 <- ASV5[,!names(ASV5) %in% euk_seqs] # this removes ~10% of the data!
+```
+
+This leaves us with a total of `r length(ASV6[1,])-3` bASVs to sort through. Next let's inspect the taxonomy and abundance distributions of these remaining bASVs:
+
+```{r, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+# capture total abundance data for bASVs
+bsums <- data.frame(total = colSums(ASV6)[1:(length(ASV6[1,])-3)])
+
+# re-make bTAX:
+bTAX2 <- bTAX[bTAX[,'X'] %in% names(ASV6),]
+
+# merge these totals info with bTAX
+bTAX2[,'total'] <- sapply(bTAX2[,'X'], function(x) bsums[,'total'][match(x, rownames(bsums))])
+bTAX2[,'log_tot'] <- log(bTAX2[,'total'],10)
+bTAX2 <- dplyr::arrange(bTAX2, desc(log_tot))
+bTAX2[,'unique.id'] <- factor(bTAX2[,'unique.id'], levels = bTAX2[,'unique.id'])
+
+# make plot of sorted abundance with labels, colored by order:
+bTAX_abund_plot_1 <- ggplot(bTAX2, aes(x = unique.id, y = log_tot)) + 
+  geom_bar(stat = "identity", fill = "gray40", color = "gray40") + 
+  theme(legend.position = "none", axis.text.x = element_blank(), axis.ticks.x = element_blank()) + 
+  ylab("log10 bASV abundance") + 
+  xlab("sorted bASV")
+
+print(bTAX_abund_plot_1)
+```
+
+Most of the data comes from a small proportion of the ASVs. This is seen more clearly in the plot below, which depicts the cumulative sum of the data as a function of the fraction of the abundance-sorted bASVs:
+
+```{r, fig.height=3, fig.width=5, message=FALSE, warning=FALSE}
+bASV_sum <- sum(ASV6[,c(1:(length(ASV6[1,])-3))]) # re-define sum
+freq <- data.frame(X = rownames(bsums), total = as.vector(bsums)/bASV_sum)
+
+freq <- dplyr::arrange(freq, desc(total))
+freq[,'cumsum'] <- cumsum(as.vector(freq[,'total']))
+
+# find number of bASVs with frequency ≥ p95
+freq[,'p95'] <- sapply(freq[,'cumsum'], function(x) (x<=0.95))
+n95 <- length(freq[,'p95'][freq[,'p95']==TRUE])
+q95 <- n95/length(freq[,1])
+
+cumabund1 <- ggplot(freq, aes(x = c(1:length(freq[,1]))/length(freq[,1]), y = cumsum)) + 
+  geom_bar(stat = "identity", color = "gray40", fill = "gray40") + 
+  geom_hline(yintercept = 0.95, col = "darkorange2", lty = "dotted") +
+  geom_vline(xintercept = q95, col = "dodgerblue", lty = "dotted") +
+  ylab("cumulative sum") + xlab("fraction of bASVs") + theme_phy1()
+
+print(cumabund1)
+```
+
+We can see that `r n95` bASVs (`r round(q95*100,2)` percent) comprise 95\% of the sequence counts. This is a highly skewed abundance distribution. Let's take a closer look at these `r n95` bASVs in more detail:
+
+```{r, fig.height=4, fig.width=8, message=FALSE, warning=FALSE}
+library(viridis) # for color pallete
+
+# grab bASVs in the 95%:
+bASV_95 <- rownames(freq[freq[,'p95']==TRUE,])
+# subset the bTAX data
+bTAX3 <- bTAX2[rownames(bTAX2) %in% bASV_95,]
+# re-plot abundances, colored by Genus:
+bTAX_abund_plot_2 <- ggplot(bTAX3, aes(x = unique.id, y = log_tot, fill = Family)) + 
+  geom_bar(stat = "identity") + 
+  theme_phy1() +
+  theme(legend.position = "right",
+             legend.text=element_text(size=8),
+             axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0, size = 8),
+             axis.ticks.x = element_blank()) + 
+  ylab("log10 bASV abundance") + 
+  xlab("sorted bASV") + guides(fill=guide_legend(ncol=2)) +
+  scale_fill_manual(values = viridis(length(unique(bTAX3[,'Family']))))
+
+print(bTAX_abund_plot_2)
+```
+
+Asside from the first two super-abundant bASVs (*Pseudomonas* and *Sphingomonas*), the rest of these top `r n95` bASVs are quite even in their total abundance.
+
+Let's clean up the lower part of the bASV distribution by removing putatively spurious ASVs with no taxonomic designation whatsoever. These all have "none" in `unique.id`. We're going to also exclude all ASVs with no taxonomic designation at Class-level or higher, which encompasses the "nones", as well as any Archaea:
+
+```{r}
+non_class <- bTAX2[is.na(bTAX2[,'Class']),'X']
+archaea <- bTAX2[bTAX2[,'Kingdom'] %in% c("Archaea"),'X']
+ASV7 <- ASV6[,!names(ASV6) %in% c(paste0(non_class),paste0(archaea))] # remove 'nones' from ASV table
+bTAX4 <- bTAX2[!bTAX2[,'X'] %in% c(paste0(non_class),paste0(archaea)),] # remove 'nones' from TAX file
+```
+
+Removing these drops us by `r length(c(paste0(non_class),paste0(archaea)))` bASVs and removes `r sum(ASV6[,names(ASV6) %in% c(paste0(non_class),paste0(archaea))])` total sequences (`r round(sum(ASV6[,names(ASV6) %in% c(paste0(non_class),paste0(archaea))])/sum(ASV6),4)*100` percent of the data).
+
+For now, let's put any further analyses aside and instead construct the final ASV table that we will export to begin the analyses. I order to do this, we need to export two data file:
+
+1. `ASV7`, containing the bacterial ASVs, and the totalled mt, cp, and fungal counts, with headers re-named by `unique.id`
+2. `bTAX4`, containing the mapping information between ASVs and `unique.id` and the rest of the assigned taxonomic hierarchy.
+
+```{r}
+library(here)
+bASV_names <- names(ASV7)[1:(length(names(ASV7))-3)]
+bASV_tax   <- sapply(bASV_names, function(x) bTAX4[,'unique.id'][match(x,bTAX4[,'X'])])
+
+# re-assign names
+ASV8 <- ASV7
+row.names(ASV8) <- ASV_sample_names
+names(ASV8)[1:(length(names(ASV8))-3)] <- paste0(bASV_tax)
+
+write.csv(ASV8, file = here("data/ASV_table_26-JUN-2018.csv"), quote=F, row.names=T)
+write.csv(bTAX4, file = here("data/bTAX_table_26-JUN-2018.csv"), quote=F, row.names=T)
+```
+
+
+## Examining bASVs by Family in more detail
+
+All of the bASVs included in the final data frames above are those that do not look spurious and do not match host-derived cp or mt 16S. However, there still may be legit bASVs which nonetheless do not belong in our dataset. These include (a) those arising from index cross-contamination during demultiplexing from other sequencing projects, and (b) those with abundance/prevalence patterns consistent with sample contamination.
+
+```{r}
+# ASV8 <- read.csv(here("data/ASV_table_26-JUN-2018.csv"), row.names = 1)
+# bTAX4 <- read.csv(here("data/bTAX_table_26-JUN-2018.csv"), row.names = 1)
+
+# bTAX4$rel <- bTAX4$total / sum(bTAX4$total)
+# length(bTAX4[bTAX4$rel > 0.01,'unique.id'])
+
+bTAX4$rel <- bTAX4$total / sum(bTAX4$total)
+
+# define set that is present in EL
+bTAX4$in_EL <- 0
+bTAX4$in_EL[bTAX4$unique.id %in% names(ELD)] <- 1
+
+# define set that is present in NB
+bTAX4$in_NP <- 0
+bTAX4$in_NP[bTAX4$unique.id %in% names(NPD)] <- 1
+
+# define sets present in each data-set:
+bTAX5 <-  bTAX4[bTAX4$in_EL > 0, ]
+bTAX6 <- bTAX4[bTAX4$in_NP > 0, ]
+```

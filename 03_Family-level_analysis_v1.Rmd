@@ -1,0 +1,70 @@
+---
+title: "03_Family-level_analysis_v1.Rmd"
+output: html_notebook
+---
+
+This notebook walks through family-level bacterial ASV abundance analysis across the EL and NB sample sets. Steps include:
+
+1. Produce multiple alignments with all intra-family bASVs for each major bacterial family and produce phylogenies in order to map taxonomy onto the lowest-level bASVs. This will be to make taxonomized trees to map the posterior predicted infection intensities onto for each of the identifies bASVs within the major families (above some abundance threshold). 
+2. Produce model results for each bASV in the set (i.e., in each Family). These data will then be mapped onto the phylogenies, and these figures will be manually edited for publication.
+
+OK let's get started with these alignment files. First we run bash scripts on the Odyssey cluster (courtesy of Research Computing at Harvard University) using `blastn` to pull down 10 best blast hits for each query bASV within each Family. Then we grab the taxonomy ID and the aligned subject sequence from each hit, export to `.fasta` file, run `mafft` to ensure proper alignment, re-import to **R** and then produce ML phylogenies with **R** package `phangorn`. 
+
+## below this is just a trial
+```{r}
+# load library that will help with assigning NCBI taxonomy to blast results
+library(taxize)
+
+# define blast results directory
+BLAST_RES_DIR <- here("blast-res/")
+BLAST_SOURCE_DIR <- here("blast-")
+blast_res_filenames <- Sys.glob(paste0(BLAST_RES_DIR,"*.csv"))
+
+
+# read files:
+BFs <- list()
+for (f in 1:length(blast_res_filenames)){
+  BFs[[f]] <- read.csv(blast_res_filenames[f], header = F)
+}
+
+# grab column header with subject sequence:
+
+seq_col <- "V4"
+tax_col <- "V6"
+
+# for now just run inner loop on test file
+for (f in 1:length(BFs)){
+  # assign NCBI taxonomy summary using tax_id from blastn results
+  BFs[[f]]$ncbi_tax <- ncbi_get_taxon_summary(x[,paste0(tax_col)])$name
+  
+  # construct fasta files for making alignments and phylogenies
+  # first construct file_name:
+  filename <- here(paste0(unlist(strsplit(paste0(BFs[[f]]$V1[1]), "_"))[1],"_hits.fasta"))
+  # dump lines to file
+  cat(paste0(">",BFs[[f]]$ncbi_tax,"\n",paste0(BFs[[f]][,seq_col])), file = filename, sep = "\n")
+  
+  # need to merge with sequences from within the original source file for alignment and phylogeny:
+  
+  
+}
+
+
+
+
+
+# export, re-align with mafft
+
+# import; construct ML trees using phangorn
+
+```
+
+
+```{r}
+library(phangorn)
+```
+
+First, load the data:
+```{r}
+
+```
+

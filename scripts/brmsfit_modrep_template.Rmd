@@ -1,0 +1,131 @@
+---
+title: "Model comparison report"
+author: "PTH"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+Report generated on `r Sys.time()`
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+suppressWarnings(suppressPackageStartupMessages(library(ggplot2)))
+suppressWarnings(suppressPackageStartupMessages(library(dplyr)))
+suppressWarnings(suppressPackageStartupMessages(library(reshape2)))
+suppressWarnings(suppressPackageStartupMessages(library(broom)))
+suppressWarnings(suppressPackageStartupMessages(library(ggpubr)))
+suppressWarnings(suppressPackageStartupMessages(library(xtable)))
+options(xtable.comment = FALSE)
+suppressWarnings(suppressPackageStartupMessages(library(brms)))
+suppressWarnings(suppressPackageStartupMessages(library(broom)))
+suppressWarnings(suppressPackageStartupMessages(library(bayesplot)))
+
+library(knitr)
+library(markdown)
+library(rmarkdown)
+```
+
+# Dataset: `r paste0(SET)`
+
+# Family: `r paste0(FAMS[m])`
+
+## Model comparisons with LOOIC
+
+```{r results='asis', message=FALSE, warning=FALSE}
+print(xtable(loo1))
+```
+
+Comparisons among top 5 models via LOO-IC:
+
+```{r results='asis', message=FALSE, warning=FALSE}
+print(xtable(tidy(loo_comp1[[6]])))
+```
+
+Best model is `r paste0(loo1$model_name[1])`. Examining this model's population-level coefficient estimates:
+
+```{r results='asis', message=FALSE, warning=FALSE}
+print(xtable(tidy(best_mod, par_type = "non-varying")))
+```
+
+Plotting posterior distributions of parameter estimates:
+
+```{r fig.align='center', fig.height=3, fig.width=6.5, message=FALSE, warning=FALSE}
+post_dists <- as.matrix(best_mod)
+plot_title <- ggtitle("Posterior distributions",
+                      "with medians and 95% intervals")
+
+# grab relevant columns of post_dists
+post_dists2 <- post_dists[,!(colnames(post_dists) %in% c(grep('r_',colnames(post_dists),value = T),grep('lp_',colnames(post_dists),value = T)))]
+mcmc_areas(post_dists2,
+#           regex_pars = c('b_','sd_','alpha'),
+           prob = 0.95) + plot_title
+```
+
+### Posterior predictive model checking
+
+Check 1: posterior predictive intervals by `herb_dmg` category:
+
+```{r fig.height=2, fig.width=2, message=FALSE, warning=FALSE, paged.print=FALSE, fig.align='center'}
+yrep = posterior_predict(best_mod)
+# just do simple PPC plot using brms built-in functions, for now:
+if(1 %in% grep("0", loo1$model_name)){
+  ppc_plot1 <- ppc_dens_overlay(
+  y = best_mod$data$log_ratio,
+  yrep = yrep[1:100,],
+  col = "gray80")
+} else {
+  ppc_plot1 <- ppc_violin_grouped(
+  y = best_mod$data$log_ratio,
+  yrep = yrep,
+  #x = as.numeric(paste0(best_mod$data$herb_dmg)),
+  group = best_mod$data$herb_dmg,
+  #prob = 0.95,
+  col = "gray80")
+}
+print(ppc_plot1)
+```
+
+## Predicting CFU counts from best log-ratio model `r paste0(loo1$model_name[1])`
+
+First let's examine the CFU model used to generate the predictions, for book-keeping:
+
+```{r results='asis'}
+#print(xtable(tidy(cfu_mod, par_type = "non-varying")))
+print(xtable(tidy(cfu_mod)))
+```
+
+Now let's output summaries of Family-level (summed) log mean and median CFU per leaf class:
+
+```{r results='asis'}
+print(xtable(fam_sum[,grep('mu',names(fam_sum))]))
+```
+
+```{r results='asis'}
+print(xtable(fam_sum[,grep('med',names(fam_sum))]))
+```
+
+Plots of distributions of predicted sample-level log-ratios and the resulting log predicted CFU per leaf class, Family-level, for rep `r paste0(the_rep)`:
+
+```{r fig.height=2, fig.width=3, message=FALSE, warning=FALSE, paged.print=FALSE, align='center', fig.cap='Distributions of posterior predicted log-ratios (left) and log CFU (right) for a random replicate simulation.'}
+# need to produce these plots:
+ggarrange(plotlist = list(fam_lr_raw,fam_plot_raw1))
+```
+
+Plots of distributions of medians and means of the log posterior predicted CFU per leaf class:
+
+```{r fig.height=2, fig.width=4.5, message=FALSE, warning=FALSE, paged.print=FALSE, fig.align='center', fig.cap='Distributions of posterior predicted median log CFU (right) and mean log CFU (middle, right) across 1000 posterior simulation replicates.'}
+ggarrange(plotlist = list(fam_plot1_med,fam_plot1,fam_plot2), ncol =3)
+```
+
+## Individual bASV results
+
+```{r fig.height=5, fig.width=6.5, message=FALSE, warning=FALSE, paged.print=FALSE, fig.align='center', fig.cap='bASV-level mean log cfu across 1000 posterior simulations.'}
+print(bASV_plot2)
+```
+

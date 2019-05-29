@@ -1,0 +1,1 @@
+Pseudomonadaceae_all_seqs.fasta

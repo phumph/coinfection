@@ -1,0 +1,180 @@
+---
+title: "OTU model report"
+author: "PTH"
+date: "October 12, 2017"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+suppressWarnings(suppressPackageStartupMessages(library(ggplot2)))
+suppressWarnings(suppressPackageStartupMessages(library(dplyr)))
+suppressWarnings(suppressPackageStartupMessages(library(reshape2)))
+suppressWarnings(suppressPackageStartupMessages(library(broom)))
+suppressWarnings(suppressPackageStartupMessages(library(gridExtra)))
+suppressWarnings(suppressPackageStartupMessages(library(xtable)))
+suppressWarnings(suppressPackageStartupMessages(library(brms)))
+suppressWarnings(suppressPackageStartupMessages(library(bayesplot)))
+library(knitr)
+library(markdown)
+library(rmarkdown)
+```
+## Basic statistics for OTU `r otu_name`
+Point estimated based on the data for prevalence and abundance in both datasets is listed below:
+```{r}
+char_stop <- which(match(unlist(strsplit(otu_name,'')),'_', F)==1)-1
+#this_otu_stat <- otu_stats[grep(substr(otu_name, start = 0, stop = char_stop), otu_stats[,'taxon_1perc']),]
+# need to remove grep.. matches multiple OTUs!!
+if (length(char_stop > 1)){
+  this_otu_stat <- dplyr::filter(otu_stats, taxon_1perc == substr(otu_name, start = char_stop[1]+2, stop = char_stop[2]))
+  this_otu_name <- paste(this_otu_stat[,'taxon_1perc'])  
+} else {
+  this_otu_stat <- dplyr::filter(otu_stats, taxon_1perc == substr(otu_name, start = 0, stop = char_stop))
+  this_otu_name <- paste(this_otu_stat[,'taxon_1perc'])  
+}
+
+print(this_otu_stat)
+```
+
+Looking more closely at the dataset `r substr(otu_tab[1,'samples'], start = 1, stop = 4)`, we have empirical point estimates of prevalence and abundance broken down by herbivory as follows. 
+
+```{r}
+N <- length(otu_tab[,this_otu_name])
+Ndmg <- sum(otu_tab[,'herb.dmg'])
+Nun <- N - Ndmg
+tots <- c(Nun,Ndmg,N)
+prev_estimates <- data.frame(rbind('counts' = c(sum(as.numeric(otu_tab[,this_otu_name]>0)[otu_tab[,'herb.dmg']==0]),
+                                                sum(as.numeric(otu_tab[,this_otu_name]>0)[otu_tab[,'herb.dmg']==1]),
+                                                sum(as.numeric(otu_tab[,this_otu_name]>0))),
+                                  'totals' = round(tots),
+                                  'freqs' = round(c(sum(as.numeric(otu_tab[,this_otu_name]>0)[otu_tab[,'herb.dmg']==0]),
+                                                    sum(as.numeric(otu_tab[,this_otu_name]>0)[otu_tab[,'herb.dmg']==1]),
+                                                    sum(as.numeric(otu_tab[,this_otu_name]>0))) / tots, 3)))
+names(prev_estimates) <- c('undamaged','damaged','total')
+```
+
+```{r results='asis', message=FALSE, warning=FALSE}
+print(xtable(prev_estimates))
+```
+
+The empirical relative abundance distribution of counts is displayed below (includes zeros) for both herbivory classes:
+
+```{r, fig.align='center', fig.height=2.5, fig.width=4.5, message=FALSE, warning=FALSE}
+relabund <- data.frame(samples = otu_tab[,'samples'],
+                       herb.dmg = otu_tab[,'herb.dmg'],
+                       stem.tx = otu_tab[,'stem.tx'],
+                       relabund = otu_tab[,this_otu_name]/otu_tab[,'total'])
+ggplot(relabund, aes(x = relabund)) + geom_histogram() + facet_wrap(~ herb.dmg) #+ scale_x_log10()
+```
+
+### Hormone treatment prevalences
+The following table displays the prevalence of this OTU across each of the hormone treatment categories.
+
+```{r}
+tots2 <- c(table(otu_tab[,'stem.tx']),'total' = N)
+the_counts <- c(sum(as.numeric(otu_tab[,this_otu_name]>0)[otu_tab[,'stem.tx']=='MC']),
+                                     sum(as.numeric(otu_tab[,this_otu_name]>0)[otu_tab[,'stem.tx']=='JATX']),
+                                     sum(as.numeric(otu_tab[,this_otu_name]>0)[otu_tab[,'stem.tx']=='SATX']),
+                                     sum(as.numeric(otu_tab[,this_otu_name]>0)))
+prev_estimates2 <- data.frame(rbind('counts' = the_counts,
+      'totals' = tots2,
+      'freqs' = round(the_counts/tots2, 3)))
+names(prev_estimates2) <- c('MC','JATX','SATX','total')
+```
+
+
+```{r results='asis', message=FALSE, warning=FALSE}
+print(xtable(prev_estimates2))
+```
+
+
+Now a plot of relative abundances in samples across hormone treatment types:
+
+```{r, fig.height=2.5, fig.width=6, fig.align='center', message=FALSE, warning=FALSE}
+ggplot(relabund, aes(x = relabund)) + geom_histogram() + facet_wrap(~ stem.tx)
+```
+
+## Regression model report for `r otu_name`
+### Summary of model output
+```{r}
+summary(OTU, waic=T)
+```
+
+The LOOIC for this model is below:
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+LOO(OTU)
+```
+
+Coefficient estimates (95% posterior intervals) are depicted below:
+
+```{r, echo=FALSE, fig.height=2.5, fig.width=5.5, message=FALSE, warning=FALSE}
+stanplot(OTU)
+```
+
+Based on these model results, the 2D reaction norm plot is the following:
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+# calculate prevalences in both damage classes
+coefs <- tidy(OTU)[1:8,]
+
+prevs <- 1 - exp(coefs[c(5,6),'estimate'])/(1+exp(coefs[c(5,6),'estimate']))
+prevs_H <- 1 - exp(coefs[c(5,6),'lower'])/(1+exp(coefs[c(5,6),'lower']))
+prevs_L <- 1 - exp(coefs[c(5,6),'upper'])/(1+exp(coefs[c(5,6),'upper']))
+
+# Rates
+# abunds <- exp(coefs[c(1,2),'estimate'])
+# abunds_L <- exp(coefs[c(1,2),'lower'])
+# abunds_H <- exp(coefs[c(1,2),'upper'])
+
+# log rates
+abunds <- coefs[c(1,2),'estimate']
+abunds_L <- coefs[c(1,2),'lower']
+abunds_H <- coefs[c(1,2),'upper']
+
+the_res <- data.frame(prevs, prevs_L, prevs_H, abunds, abunds_L, abunds_H, herb.dmg = c(0,1))
+write.table(the_res, file = paste0(OUT_DIR,this_otu_name,"_model_coefs_calculated.txt"), row.names = FALSE, quote = F, sep = '\t')
+#print(round(the_res,3))
+```
+
+Below is a two dimensional reaction norm plot based on 95% credible intervals of posterior estimates for prevalence and a measure of abundance (conditional on presence).
+
+```{r, echo=FALSE, fig.align='center', fig.height=4, fig.width=4, message=FALSE, warning=FALSE}
+# make plot of 2D reaction norm with and without herbivory
+ggplot(the_res,aes(x = prevs, y = abunds, xmin = prevs_L, xmax = prevs_H, ymin = abunds_L, ymax = abunds_H)) + geom_path(aes(x = prevs, y = abunds)) +
+  geom_errorbar(width = 0, col = "gray60") + geom_errorbarh(height = 0, col = "gray60") +
+  geom_point(aes(col = factor(herb.dmg)), size = 4) + 
+  scale_color_manual("damage", values = c("black","darkorange2")) + scale_x_continuous(limits = c(0,1)) + #scale_y_continuous(limits = c(-10,0)) +
+  theme(legend.position = "bottom") + xlab("prevalence") + ylab("abundance (nb rate)") 
+  #theme_bw()
+```
+
+## Posterior predictive checks of the model.
+
+```{r, echo=FALSE, fig.align='center', fig.height=5, fig.width=5, message=FALSE, warning=FALSE}
+y <- otu_tab[,this_otu_name]
+yrep <- posterior_predict(OTU, nsamples = 500)
+
+if (sum(is.na(yrep)) == 0){
+  
+# break y and yrep down by herb.dmg:
+y1 <- y[otu_tab[,'herb.dmg']==0]
+yrep1 <- yrep[,otu_tab[,'herb.dmg']==0]
+
+y2 <- y[otu_tab[,'herb.dmg']==1]
+yrep2 <- yrep[,otu_tab[,'herb.dmg']==1]
+
+ppc1 <- ppc_dens_overlay(log(1+y1), log(1+yrep1)) + theme(legend.position = "top") + ggtitle("(a) undamaged")
+ppc2 <- ppc_dens_overlay(log(1+y2), log(1+yrep2)) + theme(legend.position = "top") + ggtitle("(b) damaged")
+grid.arrange(ppc1,ppc2)
+} else{
+  print("Model did not converge; check Rhat values. No posterior predictive check was run!")
+}
+```
+
+

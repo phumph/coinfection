@@ -1,0 +1,16 @@
+Comamonadaceae_all_seqs.fasta
+Cytophagaceae_all_seqs.fasta
+Enterobacteriaceae_all_seqs.fasta
+Enterococcaceae_all_seqs.fasta
+Flavobacteriaceae_all_seqs.fasta
+Hyphomicrobiaceae_all_seqs.fasta
+Methylobacteriaceae_all_seqs.fasta
+Microbacteriaceae_all_seqs.fasta
+Oxalobacteraceae_all_seqs.fasta
+Paenibacillaceae_all_seqs.fasta
+Pseudomonadaceae_all_seqs.fasta
+Rhizobiaceae_all_seqs.fasta
+Rhizobiales_Incertae_Sedis_all_seqs.fasta
+Sphingobacteriaceae_all_seqs.fasta
+Sphingomonadaceae_all_seqs.fasta
+Streptococcaceae_all_seqs.fasta

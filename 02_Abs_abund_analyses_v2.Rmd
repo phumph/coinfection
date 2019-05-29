@@ -1,0 +1,918 @@
+---
+title: "Analysis of absolute bacterial abundances."
+output: html_notebook
+---
+This notebook describes how we link bacterial 16S ASV counts with absolute abundances via quantifying the relationship between host- vs. non-host-derived ASV counts. We first establish the highly repeatable relationship between insect herbivory and density of culturable bacteria (CFU g$^{-1}$ leaf tissue) for a sub-set of our samples that were cultured in parallel to 16S sequencing. We then estimate a model that allows us to generate predictive posterior distributions of how host-derived ASV counts relates to bacterial density so we can generate such predictions across the entire sample set.
+
+The link between culturable bacterial from surface-sterilized leaves and the relative counts of host-derived versus bacteria-derived 16S forms the basis for many subsequent analyses. Sections of this notebook are exported to generate Fig. 1 of the main text.
+
+First we load the standard header for this project:
+```{r}
+#header
+library(here)
+source(here("scripts/phy_functions.R"))
+source(here("scripts/phy_header.R"))
+```
+
+Now we need to load the ASV hit tables and the affiliated sample data containig the covariates for our models:
+```{r}
+#ASV.path <- "/Users/phumph/Dropbox/Phyllosphere_project/analysis_phy/16S_seq/"
+#data.path <- "/Users/phumph/Dropbox/Phyllosphere_project/analysis_phy/data/"
+# ASV.path <- here("../16S_seq/")
+# data.path <- here("data/")
+# ASVs <- read.csv(file = paste0(ASV.path,"ASV_table_final.csv"), row.names = 1)
+# mEL  <- read.csv(file = paste0(data.path,"EL_sample_data_final.csv"), row.names = 1)
+# mNP  <- read.csv(file = paste0(data.path,"NP_sample_data_final.csv"), row.names = 1)
+
+ASVs <- read.csv(file = here("data/ASV_table_26-JUN-2018.csv"), row.names = 1)
+bTAX <- read.csv(file = here("data/bTAX_table_26-JUN-2018.csv"), row.names = 1)
+mEL  <- read.csv(file = here("data/EL_sample_data_final.csv"), row.names = 1)
+mNP  <- read.csv(file = here("data/NP_sample_data_final.csv"), row.names = 1)
+```
+
+Let's split the ASV table by dataset and add in the sample metadata:
+```{r}
+# remove bASVs from Families putatively introduced via library or sample cross-contamination:
+# these were inferred from other experiments run on the same MiSeq lane
+fams_to_remove <- c('Enterococcaceae','Rhizobiales_Incertae_Sedis')
+bASVs_to_remove <- paste0(bTAX$unique.id[bTAX$Family %in% fams_to_remove])
+
+# add column that sums up all reads as well a host-derived reads:
+ASVs <- ASVs[,!names(ASVs) %in% bASVs_to_remove]
+ASVs[,'lib']  <- rowSums(ASVs)
+ASVs[,'host'] <- rowSums(ASVs[,names(ASVs) %in% c("mt","cp")])
+ASVs[,'bac']  <- rowSums(ASVs[,1:(length(ASVs[1,])-5)])
+
+# sanity check these sum up to 'lib'
+#ASVs[,'bac'] + ASVs[,'fungi'] + ASVs[,'host'] == ASVs[,'lib'] # yup. checks out. I can add.
+
+ELD <- merge(ASVs, mEL, by = "row.names")
+NPD <- merge(ASVs, mNP, by = "row.names")
+
+write.csv(ELD, file = here("data/ELD_final.csv"), quote = F, row.names = F)
+write.csv(NPD, file = here("data/NPD_final.csv"), quote = F, row.names = F)
+
+# grab subset of rows where logLeafCFU>0:
+ELc <- ELD[complete.cases(ELD[,'logLeafCFU']),]
+```
+
+Let's take a look at the relationship between host-derived sequences and culturable bacteria from paired leaf samples:
+```{r fig.height=2, fig.width=3, message=FALSE, warning=FALSE, paged.print=FALSE}
+cfu_seq_p1 <- ggplot(ELc, aes(x = log(bac/host), y = logLeafCFU)) + 
+  geom_point(col = 'gray40', alpha = 0.5) + 
+  xlab("ln(bacteria/host)") + 
+  ylab("log10 CFU per g leaf") + 
+  ylim(values = c(2,9)) + 
+  xlim(values = c(-5,5)) + 
+  stat_smooth(method = "glm") + theme_phy1()
+print(cfu_seq_p1)
+```
+
+As a sanity check, let's inspect the relationship between chloroplast (cp) and mitochondria (mt) host-derived counts:
+```{r fig.height=2, fig.width=3, message=FALSE, warning=FALSE, paged.print=FALSE}
+cp_v_mt_p1 <- ggplot(ELc, aes(x = log(cp,10), y = log(mt,10))) + 
+  geom_point(col = 'gray40', alpha = 0.5) + 
+  xlab("log10 mt ASVs") + 
+  ylab("log10 cp ASVs") +
+  stat_smooth(method = "lm") +
+  geom_abline(slope = 1, intercept = 0, col = "black", lty = "dashed") + theme_phy1()
+print(cp_v_mt_p1)
+```
+
+This passes the sanity check. The estimated slope falls off a bit at the high end, favoring mt counts over cp counts, and we do not know why this occurs. It may have something to do with the relative efficacy of the cp versus mt PNA PCR clamps, the per-plant cell organelle genome copy number, or some combination. Either way, we will continue using the sum of cp and mt ASV counts as our reference for the host-derived 16S coverage.
+
+Finally, let's inspect the relationship between herbivore damage and $\text{log CFU} g^{-1}$ leaf in the reduced dataset, as well as $\text{log} (\text{bacteria}/\text{host})$ 16S reads in the full datasets:
+```{r, fig.height=2, fig.width=3.5, message=FALSE, warning=FALSE}
+#CFU plot:
+cfu1 <- ggplot(ELc, aes(y = logLeafCFU, x = factor(herb_dmg), col = factor(herb_dmg),alpha = 0.2)) + 
+  geom_jitter(width = 0.15) + xlab("") +
+  # stat_summary(geom = "crossbar",
+  # fun.ymin = function(z) { quantile(z,0.25) },
+  # fun.ymax = function(z) { quantile(z,0.75) },
+  # fun.y = median,
+  # size = 0.2) + 
+  geom_boxplot(width = 0.8) +
+  ylab("log10 CFU g leaf") +
+  scale_y_continuous(limits = c(0.5,10), breaks = seq(2,10,2)) + 
+  scale_color_manual(values = c("gray40","steelblue")) +
+  theme_phy1() + theme(legend.position = "none")
+
+hp1 <- ggplot(ELD, aes(y = log(bac/host), x = factor(herb_dmg), col = factor(herb_dmg), alpha = 0.2)) + 
+  geom_jitter(width = 0.15) + xlab("") +
+  # stat_summary(geom = "crossbar",
+  # fun.ymin = function(z) { quantile(z,0.25) },
+  # fun.ymax = function(z) { quantile(z,0.75) },
+  # fun.y = median,
+  # size = 0.2) +
+  geom_boxplot(width = 0.8) +
+  ylab("ln (bacteria/host)") +
+  ylim(values = c(-5,5)) +
+  scale_color_manual(values = c("gray40","steelblue")) +
+  theme_phy1() + theme(legend.position = "none")
+
+hp2 <- ggplot(NPD, aes(y = log(bac/host), x = factor(herb_dmg), col = factor(herb_dmg), alpha = 0.2)) + 
+  geom_jitter(width = 0.15) + xlab("") + 
+  # stat_summary(geom = "crossbar",
+  # fun.ymin = function(z) { quantile(z,0.25) },
+  # fun.ymax = function(z) { quantile(z,0.75) },
+  # fun.y = median,
+  # size= 0.2) +
+  ylab("ln (bacteria/host)") +
+  ylim(values = c(-5,5)) +
+  geom_boxplot(width = 0.8) +
+  scale_color_manual(values = c("gray40","steelblue")) +
+  theme_phy1() + theme(legend.position = "none")
+  
+#grid.arrange(cfu1, hp1, hp2, ncol=3)
+ggarrange(plotlist = list(cfu1,hp1,hp2), ncol = 3)
+```
+
+Now let's try to plot the CFU data independently, for a Fig. 1 sub-panel:
+```{r, fig.height=2, fig.width=1.1, message=FALSE, warning=FALSE}
+pdf(file = here("figs/Fig1a.pdf"), height = 2, width = 1.1)
+  print(cfu1)
+dev.off()
+
+print(cfu1)
+```
+
+Perform posterior predictions for Bayesian model of ln(bac/host) vs. logLeafCFU from Gaussian regression model:
+```{r, fig.height=3.5, fig.width=5, message=FALSE, warning=FALSE}
+# run Bayesian model using Stan via brmns
+library(brms)
+
+ELc[,'ln_bac_host'] <- log(ELc[,'bac']/ELc[,'host'])
+
+# estimate model
+cfu_m1 <- brm(bf(logLeafCFU ~ ln_bac_host),
+               family = gaussian(),
+               data = ELc,
+               control = list(adapt_delta = 0.99))
+
+# save model for later importing
+saveRDS(cfu_m1, file = here("models/cfu_m1.rds"))
+
+# print summary output of model:
+plot(cfu_m1)
+```
+
+Now let's output summary statistics from model fit:
+```{r fig.height=2.5, fig.width=4}
+kable(tidy(cfu_m1)) %>% kable_styling(bootstrap_options = "striped", full_width = F)
+```
+
+
+
+
+```{r}
+#summary(cfu_m1)
+# feed full data into predictive posterior sampling for cfu_m1 model:
+# capture distribution of 1000 medians of simulated distributions; over-plot onto a sigle example:
+
+# steps:
+# make function with inputs:
+  # newdat (same shape as ELD and NPD)
+  # S for num sim
+  # ppstat = statistic to calculate on yrep^S per factor level (in this case, herb_dmg)
+  # ppfact = factor on which to calculate the ppstat. posterior predictions in this case need not marginalize over any group terms, since there aren't any.
+
+
+# need to use different function here to generate samples PER LEAF:
+ppsim <- function(mod, nd, ppstat = "mean", ppfact = "herb_dmg", S){
+  require(dplyr)
+  # define factor levels
+  ppfact_levels <- levels(nd[,paste0(ppfact)])
+  # create results matrix of correct dimensions
+  Sres <- data.frame()
+  # perform simulations and summary statisics
+  for (s in 1:S){
+    yrep <- brms::posterior_predict(mod, newdat = nd, nsamples = 1) # generate samples
+    if (ppstat=='median'){
+      Sres <- rbind(Sres,data.frame(dplyr::group_by(data.frame(yrep = t(yrep), ppfact = nd[,ppfact]), ppfact) %>% summarise(yrep = median(yrep)), s))
+    } else if (ppstat=='mean'){
+      Sres <- rbind(Sres,data.frame(dplyr::group_by(data.frame(yrep = t(yrep), ppfact = nd[,ppfact]), ppfact) %>% summarise(yrep = log(mean(10^yrep),10)), s)) 
+    } else {
+      break
+    }
+  }
+  yrep <- data.frame(ppfact = nd[,ppfact], yrep = t(yrep), s = s, grp = 'sim')
+  Sres[,'grp'] <- ifelse(ppstat=='mean','means','medians')
+  return(list(Y0 = yrep, Y1 = Sres))
+}
+
+ELD[,'ln_bac_host'] <- log(ELD[,'bac']/ELD[,'host'])
+NPD[,'ln_bac_host'] <- log(NPD[,'bac']/NPD[,'host'])
+
+# EL data
+nd1 <- ELD[,names(ELD) %in% c('sample','ln_bac_host','herb_dmg')]
+nd1[,'herb_dmg'] <- factor(nd1[,'herb_dmg'])
+
+# NP data
+nd2 <- NPD[,names(NPD) %in% c('sample','ln_bac_host','herb_dmg')]
+nd2[,'herb_dmg'] <- factor(nd2[,'herb_dmg'])
+
+# run posterior predictive simulations
+CFU_Yrep1 <- ppsim(mod = cfu_m1, nd = nd1, ppstat = 'mean', ppfact = 'herb_dmg', S=200)
+CFU_Yrep2 <- ppsim(mod = cfu_m1, nd = nd2, ppstat = 'mean', ppfact = 'herb_dmg', S=200)
+
+# do again for medians:
+CFU_Yrep1_med <- ppsim(mod = cfu_m1, nd = nd1, ppstat = 'median', ppfact = 'herb_dmg', S=200)
+CFU_Yrep2_med <- ppsim(mod = cfu_m1, nd = nd2, ppstat = 'median', ppfact = 'herb_dmg', S=200)
+
+# make combined file for 
+YREPS   <- rbind(data.frame(CFU_Yrep1[[1]], dataset = 'EL'), data.frame(CFU_Yrep2[[1]], dataset = 'NP'))
+MEANS   <- rbind(data.frame(CFU_Yrep1[[2]], dataset = 'EL'), data.frame(CFU_Yrep2[[2]], dataset = 'NP'))
+MEDIANS <- rbind(data.frame(CFU_Yrep1_med[[2]], dataset = 'EL'), data.frame(CFU_Yrep2_med[[2]], dataset = 'NP'))
+```
+
+
+Let's re-draw this by facetting on dataset:
+```{r, fig.height=2, fig.width=2, message=FALSE, warning=FALSE}
+# rbind relevant rows:
+ELD[,'dataset'] <- 'EL'
+NPD[,'dataset'] <- 'NP'
+the_cols <- c('dataset','ln_bac_host', 'herb_dmg')
+COMB1 <- rbind(ELD[,names(ELD) %in% the_cols], NPD[,names(NPD) %in% the_cols])
+
+# make new plot:
+hp.both <- ggplot(COMB1, aes(y = ln_bac_host, x = factor(herb_dmg), col = factor(herb_dmg), alpha = 0.2)) + 
+  geom_jitter(width = 0.15) + xlab("") + facet_wrap(~dataset) +
+  ylab("ln (bacteria/host)") +
+  ylim(values = c(-8,8)) +
+  geom_boxplot() +
+  scale_color_manual(values = c("gray40","steelblue")) +
+  theme_phy1() + theme(legend.position = "none")
+
+pdf(file = here("figs/Fig1c.pdf"), height = 2, width = 2)
+  print(hp.both)
+dev.off()
+
+print(hp.both)
+```
+
+
+Plotting posterior predicted log CFU per g leaf:
+```{r, fig.height=2, fig.width=3.5, message=FALSE, warning=FALSE}
+# yrep_p1 <- ggplot() + 
+#   geom_jitter(data = CFU_Yrep1, aes(x = factor(ppfact), y = yrep, color = ppfact, alpha = 0.2, group = grp), width = 0.15) + 
+#   #geom_boxplot(data = CFU_Yrep1[[2]], aes(x = factor(ppfact), y = med, color = ppfact, alpha = 0.2 ), position = position_dodge(width = 0.9)) + 
+#   geom_boxplot(data = CFU_Yrep1, aes(x = factor(ppfact), y = yrep, color = ppfact, alpha = 0.2, position = position_dodge())) + 
+#   scale_color_manual(values = c("gray40","dodgerblue")) + 
+#   #xlab("herbivore damage") + 
+#   xlab("") +
+#   theme_phy1() + theme(legend.position = "none") +
+#   ylab("predicted log10 CFU g leaf") + 
+#   scale_y_continuous(limits = c(0.5,10), breaks = seq(2,10,2))
+# 
+
+# yrep_p1 <- ggplot(data = CFU_Yrep1, aes(x = factor(ppfact), y = yrep, color = ppfact, alpha = 0.2, fill = grp)) + 
+#   geom_point(position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.5)) + 
+#   scale_fill_manual(values = c("white","purple")) + 
+#   #geom_boxplot(data = CFU_Yrep1[[2]], aes(x = factor(ppfact), y = med, color = ppfact, alpha = 0.2 ), position = position_dodge(width = 0.9)) + 
+#   geom_boxplot(width = 0.8, position = position_dodge(width = 0.5)) +
+#   scale_color_manual(values = c("gray40","dodgerblue")) + 
+#   #xlab("herbivore damage") + 
+#   xlab("") +
+#   theme_phy1() + theme(legend.position = "none") +
+#   ylab("predicted log10 CFU g leaf") + 
+#   scale_y_continuous(limits = c(0.5,10), breaks = seq(2,10,2))
+# print(yrep_p1)
+# 
+# 
+# # try facet version:
+# yrep_p1 <- ggplot() + 
+#   geom_jitter(data = dplyr::filter(CFU_Yrep1, grp == 'sim'), aes(x = factor(ppfact), y = yrep, color = ppfact, alpha = 0.2), width = 0.15) + 
+#   #geom_point(position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.5)) + 
+#   #geom_boxplot(data = CFU_Yrep1[[2]], aes(x = factor(ppfact), y = med, color = ppfact, alpha = 0.2 ), position = position_dodge(width = 0.9)) + 
+#   geom_boxplot(data = CFU_Yrep1, aes(x = factor(ppfact), y = yrep, color = ppfact, alpha = 0.2), width = 0.5) +
+#   scale_color_manual(values = c("gray40","dodgerblue")) + 
+#   #xlab("herbivore damage") + 
+#   xlab("") +
+#   ylab("predicted log10 CFU g leaf") + 
+#   scale_y_continuous(limits = c(0.5,10), breaks = seq(2,10,2)) + facet_wrap(~grp) +
+#   theme_phy1() + theme(legend.position = "none")
+# print(yrep_p1)
+# 
+# yrep_p2 <- ggplot() +
+#   geom_jitter(data = CFU_Yrep2[[1]], aes(x = factor(ppfact), y = yrep, color = ppfact, alpha = 0.2), width = 0.15) + 
+#   #geom_boxplot(data = CFU_Yrep2[[2]], aes(x = factor(ppfact), y = med, color = ppfact, alpha = 0.2), position = position_dodge(width = 0.9)) + 
+#   geom_boxplot(data = CFU_Yrep2[[1]], aes(x = factor(ppfact), y = yrep, color = ppfact, alpha = 0.2)) + 
+#   scale_color_manual(values = c("gray40","dodgerblue")) + 
+#   #xlab("herbivore damage") + 
+#   xlab("") +
+#   theme_phy1() + theme(legend.position = "none") +
+#   ylab("predicted log10 CFU g leaf") + 
+#   scale_y_continuous(limits = c(0.5,10), breaks = seq(2,10,2))
+# #print(yrep_p2)
+
+# YREPS
+yreps_1 <- ggplot(YREPS, aes(y = yrep, x = factor(ppfact), col = ppfact, alpha = 0.2)) +
+  geom_jitter(width = 0.15) + xlab("") + facet_wrap(~dataset) +
+  ylab("predicted log10 CFU g leaf") + xlab("") +
+  scale_y_continuous(limits = c(0.5,10), breaks = seq(2,10,2)) +
+  geom_boxplot() +
+  scale_color_manual(values = c("gray40","steelblue")) +
+  theme_phy1() + theme(legend.position = "none")
+#print(yreps_1)
+
+# MEANS
+MEANS2 <- dplyr::group_by(MEANS, dataset, ppfact) %>% summarise(mn = mean(yrep), 
+                                                                sd = sd(yrep),
+                                                                q0.025 = quantile(yrep, 0.025),
+                                                                q0.975 = quantile(yrep,0.975),
+                                                                q0.25 = quantile(yrep,0.25),
+                                                                q0.75 = quantile(yrep,0.75),
+                                                                med = median(yrep))
+
+
+MEDIANS2 <- dplyr::group_by(MEDIANS, dataset, ppfact) %>% summarise(sd = sd(yrep),
+                                                                    q0.025 = quantile(yrep, 0.025),
+                                                                    q0.975 = quantile(yrep,0.975),
+                                                                    q0.25 = quantile(yrep,0.25),
+                                                                    q0.75 = quantile(yrep,0.75),
+                                                                    med = median(yrep))
+
+means_1 <- ggplot() +
+  ylab("pp mean log10 CFU g leaf") +
+  xlab("") +
+  geom_linerange(data = MEANS2, aes(x = factor(ppfact), 
+                                    col = ppfact, 
+                                    ymin = q0.025, 
+                                    ymax = q0.975),size = 0.5) + 
+  geom_linerange(data = MEANS2, aes(x = factor(ppfact), 
+                                    col = ppfact, 
+                                    ymin = q0.25, 
+                                    ymax = q0.75, 
+                                    linetype = "dashed"),size = 1.25) + 
+  # geom_point(data = MEANS2, aes(y = med, x = factor(ppfact), col = ppfact), size = 2) +
+  geom_point(data = MEANS2, aes(y = mn, x = factor(ppfact)), col = "white", shape = 95, size = 8, position = position_dodge(1)) +
+  scale_y_continuous(limits = c(0.5,10), breaks = seq(2,10,2)) +
+  #scale_y_continuous(limits = c(4,8), breaks = seq(4,10,1)) +
+  #scale_color_manual(values = c("gray40","steelblue")) +
+  theme_phy1() + theme(legend.position = "none") +
+  facet_wrap(~dataset)
+
+medians_1 <- ggplot() +
+  ylab("pp median log10 CFU g leaf") +
+  xlab("") +
+  geom_linerange(data = MEDIANS2, aes(x = factor(ppfact), 
+                                      col = ppfact, 
+                                      ymin = q0.025, 
+                                      ymax = q0.975),size = 0.5) + 
+  geom_linerange(data = MEDIANS2, aes(x = factor(ppfact), 
+                                      col = ppfact, 
+                                      ymin = q0.25, 
+                                      ymax = q0.75, 
+                                      linetype = "dashed"),size = 1.25) + 
+  # geom_point(data = MEANS2, aes(y = med, x = factor(ppfact), col = ppfact), size = 2) +
+  geom_point(data = MEDIANS2, aes(y = med, x = factor(ppfact)), col = "white", shape = 95, size = 8, position = position_dodge(1)) +
+  #scale_y_continuous(limits = c(4,8), breaks = seq(4,10,1)) +
+  #scale_y_continuous(limits = c(0.5,10), breaks = seq(2,10,2)) +
+  scale_color_manual(values = c("gray40","steelblue")) +
+  theme_phy1() + theme(legend.position = "none") +
+  facet_wrap(~dataset)
+
+
+# means_2 <- ggplot(MEANS, aes(x = factor(ppfact), y = yrep, col = ppfact)) + 
+#   geom_boxplot(outlier.shape = NA) +
+#   scale_color_manual(values = c("gray40","dodgerblue")) +
+#   theme_phy1() + theme(legend.position = "none") +
+#   facet_wrap(~dataset)
+# # pdf(file = here("figs/Fig1de.pdf"), height = 2, width = 4)
+# #   ggarrange(plotlist = list(yreps_1, means_1), ncol = 2)
+# # dev.off()
+
+ggarrange(plotlist = list(yreps_1, medians_1), ncol = 2) %>% ggsave(filename = here("figs/Fig1ef.pdf"), width = 3.5, height = 2)
+```
+
+Let's make the linear regression plot a little better. We will add quartile envelopes for the span of the x axis, generated from simulated data:
+```{r}
+# generate simulated data and grab quantiles to plot
+# model object: cfu_m1
+cfu_env <- posterior_predict(cfu_m1, newdat = data.frame(ln_bac_host = seq(-5,5,by = 0.1)), S = 1000)
+
+# grab first 1000 sims
+cfu_env2 <- data.frame(t(cfu_env[1:1000,]))
+
+# rows are sims, cols are data points
+cfu_env2[,'ln_bac_host'] <- seq(-5,5,by = 0.1)
+# extract quantiles
+cfu_env2[,'p2.5']  <- apply(cfu_env2, 1, function(x) quantile(x, probs = c(0.025)))
+cfu_env2[,'p25']   <- apply(cfu_env2, 1, function(x) quantile(x, probs = c(0.25)))
+cfu_env2[,'p50']   <- apply(cfu_env2, 1, function(x) quantile(x, probs = c(0.5)))
+cfu_env2[,'p75']   <- apply(cfu_env2, 1, function(x) quantile(x, probs = c(0.75)))
+cfu_env2[,'p97.5'] <- apply(cfu_env2, 1, function(x) quantile(x, probs = c(0.975)))
+
+# remove yrep sim values
+cfu_env2 <- cfu_env2[,-c(1:1000)]
+```
+
+
+```{r, fig.height=2, fig.width=2.25, message=FALSE, warning=FALSE}
+cfu_seq_p2 <- ggplot() + 
+  geom_step(data = cfu_env2, aes(x = ln_bac_host, y = p2.5), col = "gray90") +
+  geom_step(data = cfu_env2, aes(x = ln_bac_host, y = p97.5), col = "gray90") +
+  geom_step(data = cfu_env2, aes(x = ln_bac_host, y = p25), col = "gray60") +
+  geom_step(data = cfu_env2, aes(x = ln_bac_host, y = p75), col = "gray60") +
+  geom_point(data = ELc, aes(x = ln_bac_host, y = logLeafCFU, alpha = 0.5), col = "gray40") + 
+  #geom_line(data = cfu_env2, aes(x = ln_bac_host, y = p50), col = "black", size = 1) +
+  geom_line(data = data.frame(fitted(cfu_m1), ln_bac_host = ELc[,'ln_bac_host']), aes(x = ln_bac_host, y = Estimate)) +
+  #xlab("ln(bacteria/host)") + 
+  xlab("") +
+  ylab("log10 CFU per g leaf") + 
+  scale_y_continuous(limits = c(0.5,10), breaks = seq(2,10,2)) + 
+  xlim(values = c(-5,5)) + 
+  #stat_smooth(data = ELc, aes(x = ln_bac_host, y = logLeafCFU), method = "lm", col = "gray20") +
+  theme_phy1() + theme(legend.position = "none")
+
+# pdf(file = here("figs/Fig1b.pdf"), height = 2, width = 2)
+#   print(cfu_seq_p2)
+# dev.off()
+
+print(cfu_seq_p2)
+
+# cfu_seq_p3 <- ggplot() + 
+#   #geom_line(data = cfu_env2, aes(x = ln_bac_host, y = p2.5), col = "gray80") +
+#   #geom_line(data = cfu_env2, aes(x = ln_bac_host, y = p97.5), col = "gray80") +
+#   #geom_line(data = cfu_env2, aes(x = ln_bac_host, y = p25), col = "gray60", lty = "dashed") +
+#   #geom_line(data = cfu_env2, aes(x = ln_bac_host, y = p75), col = "gray60", lty = "dashed") +
+#   geom_point(data = ELc, aes(x = ln_bac_host, y = logLeafCFU, alpha = 0.8), col = "gray40") + 
+#   #geom_line(data = cfu_env2, aes(x = ln_bac_host, y = p50), col = "black", size = 1) +
+#   xlab("ln(bacteria/host)") + 
+#   ylab("log10 CFU per g leaf") + 
+#   ylim(values = c(0.5,10)) + 
+#   xlim(values = c(-5,5)) +  marginal_effects(cfu_m1) +
+#   #stat_smooth(data = ELc, aes(x = ln_bac_host, y = logLeafCFU), method = "lm", col = "gray20") +
+#   theme_phy1() + theme(legend.position = "none")
+```
+
+
+Now let's look to see whether un-damaged leaves in the same sub-plot as damaged leaves have residually higher bacterial burdens, as would be expected if some underlying susceptibility were at play here, perhaps making leaves jointly susceptible to bacteria and herbivory. Alternatively, if bacteria occur first and increase risk of herbivory, then sampling variation by herbivores should leave many highly infected leaves without herbivory just by chance.
+
+We will use both EL and NPB data-sets to get at this
+
+```{r fig.height=2, fig.width=2.5, warning=FALSE, paged.print=FALSE}
+EL_sp_cor <- ELD[,names(ELD) %in% c('sp_id','herb_dmg','ln_bac_host')]
+EL_sp_cor2 <- reshape2::dcast(EL_sp_cor, formula = sp_id ~ herb_dmg, value.var = "ln_bac_host",fun.aggregate = function(x) mean(x))
+EL_sp_cor2 <- EL_sp_cor2[complete.cases(EL_sp_cor2),]
+names(EL_sp_cor2) <- c("sp_id","none","dmg")
+
+ggplot(EL_sp_cor2, aes(x = dmg, y = none)) + geom_point(alpha = 0.4) + theme_phy1() + ggtitle("EL")
+```
+
+Trying with NP:
+```{r fig.height=2, fig.width=2.5, message=FALSE, warning=FALSE, paged.print=FALSE}
+NPD$sp_id <- paste0(NPD$plot_num,"_",NPD$sub_plot_tx)
+NP_sp_cor <- NPD[,names(NPD) %in% c('sp_id','herb_dmg','ln_bac_host')]
+NP_sp_cor2 <- dcast(NP_sp_cor, formula = sp_id ~ herb_dmg, value.var = "ln_bac_host", fun.aggregate = function(x) mean(x))
+
+# grab only those sub_plots with a mark in both columns:
+NP_sp_cor2 <- NP_sp_cor2[complete.cases(NP_sp_cor2),]
+names(NP_sp_cor2) <- c("sp_id","none","dmg")
+ggplot(NP_sp_cor2, aes(x = dmg, y = none)) + geom_point(alpha = 0.4) + theme_phy1() #+ ggtitle("NP")
+```
+
+There is quite possibly a relationship here, with un-damaged leaf sets collected from the same sub-plots as damaged leaves with higher abundance showing a trend towards bacterial enrichment. This indicates some kind of shared susceptibility OR systemic induced susceptibility. This pattern is not found in the EL dataset, but the leaves were collected randomly without respect to leaf damage. In other words, there was no explicit matching by sub-plot ID `sp_id`.
+
+To examine this further, let's produce a linear model testing the slope of this relationship, testing whether ln(bac/host) of un-damaged leaves increases with the ln(bac/host) of paired damaged leaves:
+```{r}
+#NP_sp_cor3 <- reshape2::melt(NP_sp_cor2, variable.name = 'DMG', value.name = '#ln_bac_host', id.vars = 'sp_id')
+sys_cor_m2 <- brm(bf(none ~ dmg), family = gaussian, data = NP_sp_cor2)
+tidy(sys_cor_m2)
+```
+
+Looks like there is a small effect size here that nonetheless suggests plot-level correlations among leaves. Is this systemic induced susceptibility? Not sure. Need to next check to see whether more-damaged sub-plots have higher bacterial loads in their un-damaged sample. For this I'll have to bring in the stem-level herbivory data, which will for now have to wait. Let's produce a plot of the marginal effects of the previous model:
+```{r fig.height=2, fig.width=2.5, message=FALSE, warning=FALSE, paged.print=FALSE}
+plot(marginal_effects(sys_cor_m2, "dmg"), points = TRUE) #%>% ggsave(filename = here("figs/supp_fig_systemic_bacteria.pdf"), width = 2.5, height = 2)
+```
+
+I need to calcualte the 95% credible interval for the ICC of `sp_id`, which should give me similar information, after taking into account the effect of herb_dmg. But first, let's see if there is anything to be seen with this hormone analysis. First, we should take a look at whether hormone treatments impact bacterial abundances as measured by our log ratio:
+
+```{r fig.height=2, fig.width=3.5, warning=FALSE}
+ggplot(NPD[NPD$sub_plot_tx == "TX",], aes(x = factor(herb_dmg), y = ln_bac_host)) + facet_wrap(~ stem_tx) + geom_jitter(width = 0.15, alpha = 0.4) + geom_boxplot(alpha = 0.4) + theme_phy1()
+```
+
+We will explicitly test for an effect of SA treatment on bacterial abundance below:
+```{r}
+library(glmmTMB)
+library(bbmle)
+
+NPD$plot_num <- factor(NPD$plot_num)
+mod1 <- glmmTMB(ln_bac_host ~ herb_dmg + stem_tx + (1|plot_num) + (1|sp_id), data = NPD[NPD$sub_plot_tx == "TX",], family = "gaussian")
+summary(mod1)
+```
+
+```{r}
+mod2 <- glmmTMB(ln_bac_host ~ herb_dmg + stem_tx + (1|plot_num), data = NPD[NPD$sub_plot_tx == "TX",], family = "gaussian")
+mod3 <- glmmTMB(ln_bac_host ~ herb_dmg + stem_tx + (1|sp_id), data = NPD[NPD$sub_plot_tx == "TX",], family = "gaussian")
+mod4 <- glmmTMB(ln_bac_host ~ herb_dmg + stem_tx, data = NPD[NPD$sub_plot_tx == "TX",], family = "gaussian")
+mod5 <- glmmTMB(ln_bac_host ~ herb_dmg + stem_tx, dispformula = ~ herb_dmg, data = NPD[NPD$sub_plot_tx == "TX",], family = "gaussian")
+ICtab(mod1,mod2,mod3,mod4,mod5, type = "AICc")
+```
+
+Very clearly the best model contains two residual error terms, one for un-damaged and the other for damaged leaves, with variance being greater in the latter.
+
+
+### THIS IS WHERE THIS FILE SHOULD END ###
+
+Moving backwards..
+
+The next step is to dive into the bacterial taxonomy a bit and ask whether different families exhibit similar or dissimilar variation among damaged versus un-damaged leaves. To do this, we will load up our bacterial taxa and ASV count tables and partition them depending on membership in the EL and/or NB datasets. Then we will construct Family-level models for all families whose summed abundance is $\geq 1\%$ of the dataset. We will plot these and define our cutoffs for both abundance and prevalence.
+
+First, let's make sure we have the right bacterial ASV data loaded:
+```{r}
+ASV8 <- read.csv(here("data/ASV_table_final.csv"))
+bTAX4 <- read.csv(here("data/bTAX_table_final.csv"))
+
+bTAX4 <- bTAX4[bTAX4$Kingdom != "Eukaryota",]
+
+bTAX4$rel <- bTAX4$total / sum(bTAX4$total)
+
+# define set that is present in EL
+bTAX4$in_EL <- 0
+bTAX4$in_EL[bTAX4$unique.id %in% names(ELD)] <- 1
+
+# define set that is present in NB
+bTAX4$in_NP <- 0
+bTAX4$in_NP[bTAX4$unique.id %in% names(NPD)] <- 1
+```
+
+```{r}
+bTAX5 <-  bTAX4[bTAX4$in_EL > 0, ]
+bTAX6 <- bTAX4[bTAX4$in_NP > 0, ]
+```
+
+Let's define our prevalence and abundance measures for each ASV in both data-sets. This will allow us to determine the correlation between the datasets as well as determine our abundance cutoffs for Family-level models.
+```{r}
+ELD_sums <- colSums(ELD[,names(ELD) %in% bTAX5$unique.id]) # abundance
+ELD_sums <- ELD_sums / sum(ELD_sums) # convert to relative abundance
+
+NPD_sums <- colSums(NPD[,names(NPD) %in% bTAX5$unique.id]) # abundance
+NPD_sums <- NPD_sums / sum(NPD_sums) # convert to relative abundance
+
+# now for prevalence. need to comvery numeric matrix to binary
+ELDb <- ELD[,names(ELD) %in% bTAX5$unique.id]
+ELDb[ELDb>0] <- 1
+
+NPDb <- NPD[,names(NPD) %in% bTAX5$unique.id]
+NPDb[NPDb>0] <- 1
+
+ELD_prev <- colSums(ELDb) / length(ELDb[,1])
+NPD_prev <- colSums(NPDb) / length(NPDb[,1])
+
+abund_prev <- data.frame(ELD_sums, NPD_sums, ELD_prev, NPD_prev)
+abund_prev$unique.id <- row.names(abund_prev)
+
+# add taxonomic information from bTAX5
+abund_prev <- merge(abund_prev, bTAX5, by = "unique.id", sort = F)
+abund_prev <- abund_prev[order(abund_prev$ELD_sums, decreasing = TRUE),]
+```
+
+Now we can look at abundance versus prevalence for each unique ASV across the two datasets:
+```{r fig.height=3, fig.width=4, message=FALSE, warning=FALSE, paged.print=FALSE}
+ab_prev_1 <- ggplot(abund_prev, aes(x = log(ELD_sums,10), y = log(NPD_sums,10))) + geom_point(alpha = 0.4) + geom_abline(slope = 1, intercept = 0) + theme_phy1()
+ab_prev_2 <- ggplot(abund_prev, aes(x = log(ELD_prev), y = log(NPD_prev))) + geom_point(alpha = 0.4) + geom_abline(slope = 1, intercept = 0) + theme_phy1()
+
+# now plots of prevalence versus abundance
+ab_prev_3 <- ggplot(abund_prev, aes(x = log(ELD_prev), y = log(ELD_sums,10))) + geom_point(alpha = 0.4) + theme_phy1()
+ab_prev_4 <- ggplot(abund_prev, aes(x = log(NPD_prev), y = log(NPD_sums,10))) + geom_point(alpha = 0.4) + theme_phy1()
+
+# plot
+ggarrange(plotlist = list(ab_prev_1,ab_prev_2,ab_prev_3,ab_prev_4), ncol = 2, nrow = 2)
+```
+
+Now we will group them by Family and re-plot:
+```{r}
+names(abund_prev)[1] <- 'unique.id'
+abund_prev <- merge(abund_prev, data.frame(ELD_abs = colSums(ELD[,names(ELD) %in% bTAX5$unique.id]), 
+                                           NPD_abs = colSums(NPD[,names(NPD) %in% bTAX5$unique.id]),
+                                           ELD_prev2 = colSums(ELDb),
+                                           NPD_prev2 = colSums(NPDb)
+                                           ),
+                    by.x = 'unique.id', by.y = "row.names", sort = F, all.x = TRUE, all.y = FALSE)
+# using dplyr
+abund_prev2 <- group_by(abund_prev, Family) %>% summarise(EL_tot = sum(ELD_abs), 
+                                                          NP_tot = sum(NPD_abs), 
+                                                          tot = sum(EL_tot,NP_tot)) %>% arrange(desc(tot))
+
+# take columns matching Family; calculate row totals; then convert to binary and calculate colSums. This, as a proportion of number of leaves, is family-level prevalence.
+# add prevalence information
+# NOT DONE:
+x <- ELD
+y <- abund_prev
+# take all Families that are represented above 10^-4 in the dataset:
+abund_prev2$rel_abund <- abund_prev2$tot/sum(abund_prev2$tot)
+
+# define list of all families that have more than 10 reads across dataset:
+fams <- unique(abund_prev2$Family)
+
+# remove NA value, which is waste bin of all non-classified sequences.
+fams <- fams[!is.na(fams)]
+
+# function that calculates prevalence of sets of bASVs, indexed by unique.id, across the dataset
+family_prev <- function(x,y,fams){
+  fams2 <- NULL
+  for (s in 1:length(fams)){
+    focal_asvs <- y$unique.id[y$Family %in% paste0(fams[s])]
+    tmp_df <- x[,names(x) %in% focal_asvs]
+    if(length(focal_asvs) < 2){
+      new_df <- data.frame(fam_tot = tmp_df, herb_dmg = x$herb_dmg)
+      new_df$fam_tot[new_df$fam_tot > 0] <- 1 # re-assign to binary for prevalence calculation
+      new_df2 <- group_by(new_df, herb_dmg) %>% summarise(hits = sum(fam_tot), N = length(herb_dmg), prev = hits/N)
+    } else{
+      #new_sums <- rowSums(tmp_df)
+      new_df <- data.frame(fam_tot = rowSums(tmp_df),herb_dmg = x$herb_dmg)
+      new_df$fam_tot[new_df$fam_tot > 0] <- 1 # re-assign to binary for prevalence calculation
+      new_df2 <- group_by(new_df, herb_dmg) %>% summarise(hits = sum(fam_tot), N = length(herb_dmg), prev = hits/N)
+    }
+    fams2 <- rbind(fams2,data.frame(Family = paste0(fams[s]), new_df2))
+  }
+  return(fams2)
+}
+
+EL_fam_prev <- family_prev(x = ELD, y = bTAX5, fams = fams)
+NP_fam_prev <- family_prev(x = NPD, y = bTAX6, fams = fams)
+```
+
+
+```{r}
+# create long format:
+bASV_names <- names(ELD)[2:(match('cp',names(ELD))-1)] # same names in ELD as in NPD; can use for both
+
+ELD2 <- reshape2::melt(ELD, measure.vars = bASV_names, variable.name = "bASV", value.name = "bASV_count")
+ELD3 <- merge(ELD2, bTAX5[,c('unique.id','Phylum','Class','Order','Family','Genus')], by.x = 'bASV', by.y = 'unique.id', sort = F)
+write.csv(ELD3, file = here("data/ELD_long_v1.csv"), row.names = F)
+
+# do same for NP:
+NPD2 <- reshape2::melt(NPD, measure.vars = bASV_names, variable.name = "bASV", value.name = "bASV_count")
+NPD3 <- merge(NPD2, bTAX5[,c('unique.id','Phylum','Class','Order','Family','Genus')], by.x = 'bASV', by.y = 'unique.id', sort = F)
+write.csv(NPD3, file = here("data/NPD_long_v1.csv"), row.names = F)
+```
+
+Let's configure our dataset to plot Family-level abundance across samples for each herbivore dmg class:
+```{r}
+ELD3b <- group_by(ELD3, Family) %>% summarise(fam_tot = sum(bASV_count)) %>% arrange(desc(fam_tot))
+ELD3b$cum_tot <- cumsum(ELD3b$fam_tot)
+ELD3b$cum_tot <- ELD3b$cum_tot / max(ELD3b$cum_tot)
+
+ELD3c <- group_by(ELD3, Row.names) %>% summarise(sample_tot = sum(bASV_count)) %>% arrange(desc(sample_tot))
+
+# generate data.frame for plotting: family-level:
+ELD_fam <- group_by(ELD3, Row.names, herb_dmg, Family) %>% summarise(fam_tot = sum(bASV_count))
+
+# grab levels and re-order each of original data.frame:
+ELD_fam$Family <- factor(ELD_fam$Family, levels = paste0(ELD3b$Family))
+ELD_fam$Row.names <- factor(ELD_fam$Row.names, levels = paste0(ELD3c$Row.names))
+
+# now add back cp fungal and total read counts for plotting:
+ELD_fam2 <- merge(ELD_fam, ELD[,c('Row.names','cp','mt','fungi','lib','host','bac','plot_num','sub_plot_tx','sp_id','plot_cond','tx_full')], sort = F, by = 'Row.names')
+
+## do same for NP dataset:
+NPD3b <- group_by(NPD3, Family) %>% summarise(fam_tot = sum(bASV_count)) %>% arrange(desc(fam_tot))
+NPD3b$cum_tot <- cumsum(NPD3b$fam_tot)
+NPD3b$cum_tot <- NPD3b$cum_tot / max(NPD3b$cum_tot)
+
+NPD3c <- group_by(NPD3, Row.names) %>% summarise(sample_tot = sum(bASV_count)) %>% arrange(desc(sample_tot))
+
+# generate data.frame for plotting: family-level:
+NPD_fam <- group_by(NPD3, Row.names, herb_dmg, Family) %>% summarise(fam_tot = sum(bASV_count))
+
+# grab levels and re-order each of original data.frame:
+NPD_fam$Family <- factor(NPD_fam$Family, levels = paste0(NPD3b$Family))
+NPD_fam$Row.names <- factor(NPD_fam$Row.names, levels = paste0(NPD3c$Row.names))
+
+# now add back cp fungal and total read counts for plotting:
+NPD_fam2 <- merge(NPD_fam, NPD[,c('Row.names','cp','mt','fungi','lib','host','bac','plot_num','sub_plot_tx','plot_cond','tx_full')], sort = F, by = 'Row.names')
+```
+
+Let's plot the relative abundance of each Family against one another for both datasets:
+```{r fig.height=2, fig.width=3, message=FALSE, warning=FALSE, paged.print=FALSE}
+ELD3b$rel_abund <- ELD3b$fam_tot / sum(ELD3b$fam_tot)
+NPD3b$rel_abund <- NPD3b$fam_tot / sum(NPD3b$fam_tot)
+
+Fams <- merge(ELD3b, NPD3b, by = "Family", sort = F) # x = EL, y = NP
+```
+
+
+```{r fig.height=2, fig.width=3, message=FALSE, warning=FALSE, paged.print=FALSE}
+fam_compare_p1 <- ggplot(Fams, aes(x = log(rel_abund.x,10), y = log(rel_abund.y,10), group = Family)) + 
+  geom_point(alpha = 0.4) + theme_phy1() +
+  geom_abline(intercept = 0, slope = 1) + 
+  xlab("log rel. abund (EL)") + 
+  ylab("log rel. abund (NP)")
+
+print(fam_compare_p1)
+```
+
+This plot reveals two interesting findings: First, the most abundant taxa are similiarly abundant in both datasets. However, their rank orders are not perfectly conserved. Second, there are many taxa that are barely represented ($\leq 10^{-4}$) that nonetheless occur at modest frequencies in the other dataset. These two cases are Flavobacteriaceae in NPD and Rhizobiales in ELD. 
+
+Let's now compare these abundances with family-level prevalence, to see whether there is a natural cutoff for examining Families more closely:
+```{r}
+ELD4 <- merge(ELD3b, EL_fam_prev, by = "Family", sort = F)
+ELD4b <- group_by(ELD4, Family) %>% summarise(w_avg_prev = sum(N*prev)/sum(N))
+ELD4c <- merge(ELD3b, ELD4b, by = "Family", sort = F)
+
+# now for NP
+NPD4 <- merge(NPD3b, NP_fam_prev, by = "Family", sort = F)
+NPD4b <- group_by(NPD4, Family) %>% summarise(w_avg_prev = sum(N*prev)/sum(N))
+NPD4c <- merge(NPD3b, NPD4b, by = "Family", sort = F)
+```
+
+
+```{r fig.height=2, fig.width=5, message=FALSE, warning=FALSE, paged.print=FALSE}
+abund_prev_EL <- ggplot(ELD4c, aes(x = log(w_avg_prev,10), y = log(rel_abund,10))) + 
+  geom_point(alpha = 0.4) + 
+  scale_y_continuous(limits = c(-6.5,0), breaks = seq(-6,0,1)) + ggtitle("EL") +
+  theme_phy1() + xlab("log average prevalence") + ylab("log rel. abund")
+
+abund_prev_NP <- ggplot(NPD4c, aes(x = log(w_avg_prev,10), y = log(rel_abund,10))) + 
+  geom_point(alpha = 0.4) + 
+  scale_y_continuous(limits = c(-6.5,0), breaks = seq(-6,0,1)) + ggtitle("NP") +
+  theme_phy1() + xlab("log average prevalence") + ylab("log rel. abund")
+
+ggarrange(plotlist = list(abund_prev_EL,abund_prev_NP))
+```
+
+
+Now plot the distribution of differences in prevalence between damage types:
+```{r fig.height=2, fig.width=1}
+# EL
+prev_diffs_EL <- EL_fam_prev[EL_fam_prev$herb_dmg==0,'prev'] - EL_fam_prev[EL_fam_prev$herb_dmg==1,'prev']
+EL_fam_prev3 <- data.frame(Family = unique(EL_fam_prev$Family), prev_diff = prev_diffs_EL, dataset = "EL")
+
+# now for NP
+prev_diffs_NP <- NP_fam_prev[NP_fam_prev$herb_dmg==0,'prev'] - NP_fam_prev[NP_fam_prev$herb_dmg==1,'prev']
+NP_fam_prev3 <- data.frame(Family = unique(NP_fam_prev$Family), prev_diff = prev_diffs_NP, dataset = "NP")
+
+# now plot:
+fam_prev3 <- rbind(EL_fam_prev3, NP_fam_prev3)
+
+ggplot(fam_prev3, aes(x = dataset, y = prev_diff)) + geom_jitter(alpha = 0.4, width = 0.15) + geom_boxplot(alpha = 0.4) + theme_phy1() + geom_hline(yintercept = 0, lty = "dashed", col = "darkorange2")
+```
+
+Doesn't look like a whole lot of change in prevalence of all bacteria in general, but these swings are quite large (20% differences in prevalence between damage types). We will investigate this more later. Could be a detection threshold thing, and the binomial models will sort this out.
+
+## Examining bASV family abundance across leaves
+
+
+Let's return to our long-format datasets and sum counts by Family, then plot relative abundance distributions across samples:
+
+```{r}
+## First for EL
+ELD_fam <- group_by(ELD3, Row.names, Family) %>% summarise(fam_tot = sum(bASV_count))
+
+# add host and fungal components:
+ELD_nonbact <- reshape2::melt(ELD[,names(ELD) %in% c('Row.names','fungi','host')], id.vars = "Row.names", value.name = "fam_tot", variable.name = "Family")
+
+# combine
+ELD_fam2 <- rbind(as.data.frame(ELD_fam), ELD_nonbact)
+ELD_fam3 <- merge(ELD_fam2, ELD[,names(ELD) %in% c('Row.names', 'herb_dmg','lib')], by = "Row.names", sort = F)
+ELD_fam3$rel <- ELD_fam3$fam_tot / ELD_fam3$lib
+
+# re-define levels according to average abundance:
+ELD_fam_rank <- group_by(ELD_fam3, Family) %>% summarise(avg_rel = mean(rel)) %>% arrange(desc(avg_rel))
+ELD_families <- c('host','fungi',paste0(ELD_fam_rank$Family)[!paste0(ELD_fam_rank$Family) %in% c('host','fungi')])
+
+# re-assign levels of Family
+ELD_fam3$Family <- factor(ELD_fam3$Family, levels = ELD_families)
+
+# now re-define levels of samples by total abundance of bASVs in the sample (or by lowest host fraction)
+ELD_sample_rank <- filter(ELD_fam3, Family == "host") %>% arrange(desc(fam_tot))
+
+# re-assign factor levels (by decreasing abundance of host-derived 16S counts)
+ELD_fam3$Row.names <- factor(ELD_fam3$Row.names, levels = ELD_sample_rank$Row.names)
+
+
+# bin all low-abundance families into one group:
+low_freq_fams <- ELD_fam_rank[ELD_fam_rank$avg_rel < 10^-5, 'Family']
+
+ELD_fam3$Family2 <- ELD_fam3$Family
+ELD_fam3$Family2 <- as.character(ELD_fam3$Family2)
+ELD_fam3[ELD_fam3$Family %in% paste0(low_freq_fams$Family),'Family2'] <- 'low'
+
+
+# Now for NP
+NPD_fam <- group_by(NPD3, Row.names, Family) %>% summarise(fam_tot = sum(bASV_count))
+
+# add host and fungal components:
+NPD_nonbact <- reshape2::melt(NPD[,names(NPD) %in% c('Row.names','fungi','host')], id.vars = "Row.names", value.name = "fam_tot", variable.name = "Family")
+
+# combine
+NPD_fam2 <- rbind(as.data.frame(NPD_fam), NPD_nonbact)
+NPD_fam3 <- merge(NPD_fam2, NPD[,names(NPD) %in% c('Row.names', 'herb_dmg','lib')], by = "Row.names", sort = F)
+NPD_fam3$rel <- NPD_fam3$fam_tot / NPD_fam3$lib
+
+# re-define levels according to average abundance:
+NPD_fam_rank <- group_by(NPD_fam3, Family) %>% summarise(avg_rel = mean(rel)) %>% arrange(desc(avg_rel))
+NPD_families <- c('host','fungi',paste0(NPD_fam_rank$Family)[!paste0(NPD_fam_rank$Family) %in% c('host','fungi')])
+
+# re-assign levels of Family
+NPD_fam3$Family <- factor(NPD_fam3$Family, levels = NPD_families)
+
+# now re-define levels of samples by total abundance of bASVs in the sample (or by lowest host fraction)
+NPD_sample_rank <- filter(NPD_fam3, Family == "host") %>% arrange(desc(fam_tot))
+
+# re-assign factor levels (by decreasing abundance of host-derived 16S counts)
+NPD_fam3$Row.names <- factor(NPD_fam3$Row.names, levels = NPD_sample_rank$Row.names)
+
+
+# bin all low-abundance families into one group:
+low_freq_fams_NP <- NPD_fam_rank[NPD_fam_rank$avg_rel < 10^-5, 'Family']
+
+NPD_fam3$Family2 <- NPD_fam3$Family
+NPD_fam3$Family2 <- as.character(NPD_fam3$Family2)
+NPD_fam3[NPD_fam3$Family %in% paste0(low_freq_fams_NP$Family),'Family2'] <- 'low'
+```
+
+Let's try a few versions of a plot. First we will plot our familiar jittery boxplot of the log ratio of bASV-to-host-derived 16S counts, broken downn by family, for the top 5 most abundant families. Reminder this plot is only for the EL dataset:
+```{r fig.height=2, fig.width=12, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# all plots only use the union of families at >=10^-3 relative abundance in either of the datasets:
+EL_fams <- paste0(as.data.frame(ELD_fam_rank[ELD_fam_rank$avg_rel >= 10^(-3), 'Family'])[,1])
+EL_fams <- EL_fams[!EL_fams %in% c('host','fungi')]
+
+NP_fams <- paste0(as.data.frame(NPD_fam_rank[NPD_fam_rank$avg_rel >= 10^(-3), 'Family'])[,1])
+NP_fams <- NP_fams[!NP_fams %in% c('host','fungi')]
+
+# Looks like all NP families are subsumed in EL families; just use EL list
+# sum(NP_fams %in% EL_fams) / length(NP_fams)
+all_fams <- EL_fams
+
+# write to file for model caller Rscript
+cat(all_fams, file = here("models/all_fams.csv"), sep = "\n")
+
+# fam99 <- ELD3b$Family[ELD3b$cum_tot < 0.99]
+# fam94 <- ELD3b$Family[ELD3b$cum_tot < 0.94]
+
+# version 1: barplot with log ratios plotted for each family:
+fpv1 <- ggplot(dplyr::filter(ELD_fam2,Family %in% all_fams), aes(x = herb_dmg, y = log(fam_tot / host), col = herb_dmg)) + geom_jitter(width = 0.15, alpha = 0.2) + 
+  geom_boxplot(alpha = 0.2) + 
+  scale_color_manual(values = c("gray40","dodgerblue")) +
+  facet_wrap( ~ Family, ncol = 20, nrow = 1) + 
+  ylab("ln (bac/host)") + theme_phy1() +
+  theme(strip.text = element_text(size = 6),
+        legend.position = "none")
+
+print(fpv1)
+```
+
+Let's plot this another way:
+```{r fig.height=1.5, fig.width=6, message=FALSE, warning=FALSE, paged.print=FALSE}
+fpv2 <- ggplot(dplyr::filter(ELD_fam2,Family %in% fam94), aes(y = Family, x = Row.names, fill = log(fam_tot / host))) + 
+  geom_tile(na.rm = TRUE) + 
+  facet_wrap(~herb_dmg, scales = "free_x") +
+  scale_fill_gradientn(colors = viridis(20), na.value = "white") + 
+  xlab("sample") + theme_phy1() + 
+  theme(axis.text.x = element_blank())
+
+print(fpv2)
+```
+
+Let's do the same for the NPB dataset:
+```{r fig.height=2, fig.width=5}
+NP_fam99 <- NPD3b$Family[NPD3b$cum_tot < 0.99]
+NP_fam94 <- NPD3b$Family[NPD3b$cum_tot < 0.94]
+NPD_fam2$herb_dmg <- factor(NPD_fam2$herb_dmg)
+
+# version 1: barplot with log ratios plotted for each family:
+NP_fpv1 <- ggplot(dplyr::filter(NPD_fam2,Family %in% NP_fam99), aes(x = herb_dmg, y = log(fam_tot / host), col = herb_dmg)) + geom_jitter(width = 0.15, alpha = 0.2) + 
+  geom_boxplot(alpha = 0.2) + 
+  scale_color_manual(values = c("gray40","dodgerblue")) +
+  facet_wrap( ~ Family, ncol = 9, nrow = 1) + 
+  ylab("ln (bac/host)") + theme_phy1() +
+  theme(strip.text = element_text(size = 6),
+        legend.position = "none")
+
+print(NP_fpv1)
+```
+
+The next plot I want to see is the standard stacked bar chart of relative abundances, plotted on log scale and linear scales, for all of the top 10 families. To do this, I need to sum up the abundance of all lower OTUs per family and then plot them in a stacked bar format:
+
+```{r}
+# function to collapse bASV by unique.id into higher-level bins (base case is Family).
+# script takes a list of families and collapses counts found in x based on taxonomy in y
+x <- ELD3
+y <- bTAX6 # this should work, as will anything with the taxonomy mapping
+fams <- 
+
+family_prev_persample <- function(x,y,fams){
+  fams2 <- NULL
+  for (s in 1:length(fams)){
+    focal_asvs <- y$unique.id[y$Family %in% paste0(fams[s])]
+    tmp_df <- x[,names(x) %in% focal_asvs]
+    if(length(focal_asvs) < 2){
+      new_df <- data.frame(fam_tot = sum(tmp_df),herb_dmg = x$herb_dmg)
+      new_df$fam_tot[new_df$fam_tot > 0] <- 1 # re-assign to binary for prevalence calculation
+      new_df2 <- group_by(new_df, herb_dmg) %>% summarise(hits = sum(fam_tot), N = length(herb_dmg), prev = hits/N)
+    } else{
+      #new_sums <- rowSums(tmp_df)
+      new_df <- data.frame(fam_tot = rowSums(tmp_df),herb_dmg = x$herb_dmg)
+      new_df$fam_tot[new_df$fam_tot > 0] <- 1 # re-assign to binary for prevalence calculation
+      new_df2 <- group_by(new_df, herb_dmg) %>% summarise(hits = sum(fam_tot), N = length(herb_dmg), prev = hits/N)
+    }
+    fams2 <- rbind(fams2,data.frame(Family = paste0(fams[s]), new_df2))
+  }
+  return(fams2)
+}
+```
+
