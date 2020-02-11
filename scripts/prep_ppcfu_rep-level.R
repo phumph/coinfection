@@ -1,5 +1,5 @@
 # script to prepare data for plotting for Family-level and bASV-level data for Figs. 2 and relevant appendixes
-# Last updated: 2018-09-24 PTH
+# Last updated: 2018-11-09 PTH
 
 # Updates
 # 2018-08-15:
@@ -11,28 +11,26 @@
 # 2018-11-09
   # 1. Produce supplemental figure showing EL versus NP comparisons of (a) median abundance (+/- damage) and (b) doublings diff.
 
-
 ##########################
 
 # load libraries and headers
-library(here)
-source(here("scripts/phy_header.R"))
-source(here("scripts/phy_functions.R"))
+source(file.path("./phy_header.R"))
+source(file.path("./phy_functions.R"))
 
 # load all relevant data for Family and bASV-level data at rep-level.
-FAM_FILES_DIR_EL <- here("models/EL/ppcfu_data/")
-FAM_FILES_DIR_NP <- here("models/NP/ppcfu_data/")
+FAM_FILES_DIR_EL <- "../models/EL/ppcfu_data/"
+FAM_FILES_DIR_NP <- "../models/NP/ppcfu_data/"
 FAM_PREFIX <- 'fam-sum-all*'
 FAM_REP_PREFIX <- 'fam-sum-rep*'
 
-ALL_FILES_DIR <- here("models/all-bacteria/")
+ALL_FILES_DIR <- "../models/all-bacteria/"
 ALL_PREFIX <- 'sum-all_'
 ALL_REP_PREFIX <- 'sum-all-rep_'
 
 # family-level taxonomy:
 #bTAX <- read.csv(here("data/bTAX_table_final.csv"))
-bTAX <- read.csv(here("data/bTAX_table_26-JUN-2018.csv"))
-FAMS <- paste0(read.csv(here("models/all_fams.csv"), header = F)[,1])
+bTAX <- read.csv(file.path("../data/bTAX_table_26-JUN-2018.csv"))
+FAMS <- paste0(read.csv(file.path("../models/all_fams.csv"), header = F)[,1])
 FAMS <- FAMS[!FAMS %in% c('Rhizobiales_Incertae_Sedis','Enterococcaceae')]
 fam_tax <- unique(bTAX[,c('Phylum','Class','Order','Family')]) %>% dplyr::filter(Family %in% FAMS) %>% arrange(desc(Phylum), desc(Class), desc(Order), desc(Family))
 
@@ -162,7 +160,9 @@ fp1 <- ggplot(fam_sums, aes(y = Family, x = factor(herb_dmg))) + geom_tile(aes(f
   #scale_fill_gradientn(colors = viridis(20)) +
   #scale_fill_gradientn(colors = cividis(20)) +
   #scale_fill_gradientn(colors = plasma(20)) +
-  scale_fill_gradient(low = "white", high = "black") +
+  #scale_fill_gradientn(colors = kovesi.diverging_linear_bjr_30_55_c53(64)) +
+  scale_fill_gradientn(colors = parula(64)) +
+  #scale_fill_gradientn(colors = ocean.haline(64)) +
   facet_wrap(~ dataset) +
   theme(legend.position = 'top') + xlab("")
 
@@ -191,9 +191,7 @@ doublings_fam_level <- ggplot(fam_rep_res) +
   theme(axis.text.y = element_blank())
 
 ggarrange(plotlist = list(fp1, doublings_fam_level), ncol = 2, widths = c(0.85,1.5), common.legend = T, align = 'h') %>%
-  ggsave(filename = here("figs/Fig2a_with_all_bact_bw.pdf"), width = 6, height = 2.75)
-
-
+  ggsave(filename = file.path("../figs/Fig2a_with_all_bact_parula.pdf"), width = 6, height = 2.75)
 
 
 #### SI Figure-making ####
@@ -254,10 +252,10 @@ doub_comp_sites <- ggplot(fam_rep_res_cast, aes(x = q0.50.x, y = q0.50.y, fill =
 
 # put together, make relatively big for ease of viewing in SI:
 # top panels
-ggsave(med_comp_sites, filename = here("figs/SI_med_comp.pdf"), width = 5, height = 2.5)
+ggsave(med_comp_sites, filename = file.path("../figs/SI_med_comp.pdf"), width = 5, height = 2.5)
 
 # bottom panels, with legend:
-ggsave(doub_comp_sites, filename = here("figs/SI_doub_comp.pdf"), width = 4, height = 2.5)
+ggsave(doub_comp_sites, filename = file.path("../figs/SI_doub_comp.pdf"), width = 4, height = 2.5)
 
 # ggarrange(plotlist = list(med_comp_sites,doub_comp_sites),common.legend = T,ncol = 2, widths = c(1.8,1), legend = 'right') %>%
 #   ggsave(filename = here("figs/SI_med_doub_comp.pdf"), width = 6.5, height = 2)
@@ -359,4 +357,3 @@ ggsave(doub_comp_sites, filename = here("figs/SI_doub_comp.pdf"), width = 4, hei
 # bASV_log2$l2d <- log(bASV_log2$herb_dmg_1 / bASV_log2$herb_dmg_0,2)
 # ggplot(bASV_log2, aes(x = l2d, col = bASV)) + geom_density()
 # ggplot(bASV_rep, aes(x = factor(herb_dmg), y = log_med_pp_cfu, col = bASV)) + geom_boxplot()
-

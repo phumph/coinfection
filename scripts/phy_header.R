@@ -1,7 +1,9 @@
-### Insect herbivory shapes the structure of leaf microbiomes
+### Insect herbivory reshapes a native leaf microbiome
 ### Humphrey & Whiteman
 ### last updated: PTH 15-JUN-2018
+
 ## Header file for all R scripts
+
 ## phy_header.R
 
 # install.packages("here")
@@ -28,7 +30,6 @@
 # install.packages("glmmTMB")
 # install.packages("bbmle")
 # install.packages("kableExtra", type="source")
-
 
 ## setup ggplot themes:
 theme_ph1 <- function (base_size = 11, base_family = "sans")

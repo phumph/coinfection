@@ -1,3 +1,4 @@
+#!/usr/bin/env Rscript
 
 # Rscript for performing DADA2 pipeline on EL and NPB sample sets
 # PTH
@@ -7,51 +8,43 @@
   # --filt, output directory for filtered files (defaults to DIR) [==FILT]
   # --QC, output directory for QC information (defaults to DIR) [==QC_OUT]
   # --out, output directory for summary statistics and ASV table output (defaults to DIR) [==OUT]
-  # --params, parameter input file for dada [==PARAMS]:
-    # maxEE = maximum number of expected errors
-  
-suppressPackageStartupMessages(library(optparse))
-source("https://bioconductor.org/biocLite.R")
-biocLite("devtools")
-suppressPackageStartupMessages(library("devtools"))
-devtools::install_github("benjjneb/dada2")
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+
+#BiocManager::install("BiocGenerics")
+#BiocManager::install("dada2", version = "3.10")
+
 suppressPackageStartupMessages(library(dada2))
 suppressPackageStartupMessages(library(ShortRead))
 suppressPackageStartupMessages(library(ggplot2))
 suppressPackageStartupMessages(library(gridExtra))
 suppressPackageStartupMessages(library(bayesplot))
 
-
 # need to setup argument parsing
 #### PARSING COMMAND LINE ARGUMENTS ####
 option_list <- list(
-  make_option(c("-i", "--dir"), action="store", type="character", default=NA, 
-              help="Input file of processed counts (output of counts_parser.R"), 
-  
-  make_option(c("-o", "--output"), action="store", type="character", default=NA, 
-              help="Output directory (full path; must exist) for figures and data"), 
-  
+  make_option(c("-i", "--input"), action="store", type="character", default=NA,
+              help="Input dir of .fastq files"),
+
+  make_option(c("-o", "--output"), action="store", type="character", default=NA,
+              help="Output dir for parsed and QC'd sequences"),
+
   # make_option(c("-e", "--exclude"), action="store", type="character", default=NA,
   # help="Time point(s) to exclude, comma- or semi-colon-separated"),
-  
-  make_option(c("-e", "--exclude"), action="store", type="integer", default=NA,
-              help="Time point to exclude from fitness calculation (only single values supported for now..)"),
-  
+
   make_option(c("-c", "--cutoff"), action="store", type="integer", default=20,
               help="Define cutoff for initial time-point read count for inclusion [default %default]"),
-  
+
   make_option(c("-r", "--iterations"), action="store", type="integer", default=3,
               help="Define the number of iterations to run of the model [default %default]")
 )
 
 opt <- parse_args(OptionParser(option_list=option_list))
 
-
-
-
 ## temporary variable assignments for debugging:
 QC_PATH <- "/Users/phumph/Dropbox/Phyllosphere_project/analysis_phy/16S_seq/demult/dada2_v1/QC/"
-DIR     <- "/Users/phumph/Dropbox/Phyllosphere_project/analysis_phy/16S_seq/demult/out"
+DIR     <- "../seq_data/out"
 FILT    <- "/Users/phumph/Dropbox/Phyllosphere_project/analysis_phy/16S_seq/filt/"
 
 runQC <- TRUE
@@ -72,35 +65,34 @@ if (runQC == TRUE){
   the_F_files <- fnFs[ns]
   the_R_files <- fnRs[ns]
   the_names <- sample.names[ns]
-  
+
   for(fil in 1:length(the_F_files)){
-    QP1 <- plotQualityProfile(paste0(path,the_F_files[fil]))
-    QP2 <- plotQualityProfile(paste0(path,the_R_files[fil]))
+    QP1 <- plotQualityProfile(the_F_files[fil])
+    QP2 <- plotQualityProfile(the_R_files[fil])
     png(filename = paste0(outpath,"QProf.",the_names[fil], ".png"), width = 640, height = 960)
-      grid.arrange(QP1,QP2,nrow=2)
+      grid.arrange(QP1, QP2, nrow=2)
     dev.off()
   }
 } else if (doFilt == TRUE) {
-  
+
   filtpath <- FILT
   filtFs <- paste0(filtpath, sapply(strsplit(fnFs, "\\."), `[`, 1), "_filt.fastq")
   filtRs <- paste0(filtpath, sapply(strsplit(fnRs, "\\."), `[`, 1), "_filt.fastq")
-  
+
   # need to supply full path:
   out <- filterAndTrim(fnFs[1:4], filtFs[1:4], fnRs[1:4], filtRs[1:4], truncLen=c(150,150),
                        maxN=0, maxEE=c(2,2), truncQ=2, rm.phix=TRUE,
                        compress=FALSE, multithread=FALSE)
 
-  
-} else{
+
+} else {
   # just do DADA on filt files, with error objects re-learned.
-  
+
 }
 # took about 3 min to run on 50 samples.
 
-  head(out)
 
-outpath <- '/Users/phumph/Dropbox/Phyllosphere_project/analysis_phy/16S_seq/demult/dada2_v1/QC/'
+outpath <- '../seq_data/QC/'
 
 # calibrate the base-wise error model for fwd and rev reads
 errF <- learnErrors(filtFs, multithread=TRUE)
@@ -156,4 +148,3 @@ taxa <- addSpecies(taxa, "Training/silva_species_assignment_v128.fa.gz")
 # export for the inspection
 write.csv(taxa, file="dada2_taxa_Silva_wSpp_v1.csv", quote=F)
 ```
-

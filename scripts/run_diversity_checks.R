@@ -15,18 +15,21 @@
 # calculate Shannon--Jensen divergence for each R=200 pairs of average probability vectors
 
 # Capturing data routine:
-library(here)
-source(here("scripts/phy_header.R"))
+source("./phy_header.R")
+source("./phy_functions.R")
 
-#### FUNCTION DEFS ####
+# ============= #
+# function defs #
+# ============= #
 
 # function to grab bASV sample-level ppcfu data:
-grab_ppcfu <- function(SET = 'EL', OUTFILE = here("models/div/"), base_mod_dir = here("models/"), prefix = 'ppcfu_*'){
-  require(dplyr)
-  require(reshape2)
+grab_ppcfu <- function(SET = 'EL', OUTFILE = "../models/div/"), base_mod_dir = "../models/", prefix = 'ppcfu_*') {
+
   # grab all relevant files with prefix from focal dir:
-  the_files <- Sys.glob(paste0(base_mod_dir,SET,'/ppcfu_data/',prefix))
+  the_files <- Sys.glob(paste0(base_mod_dir, SET, '/ppcfu_data/', prefix))
+
   df <- data.frame()
+
   for (i in seq_along(the_files)){
     f <- read.csv(file = the_files[i])
     f <- dplyr::arrange(f, bASV, rep, herb_dmg, samp_id)
@@ -39,16 +42,18 @@ grab_ppcfu <- function(SET = 'EL', OUTFILE = here("models/div/"), base_mod_dir =
       df <- cbind(df,f2[,-c(1:3)])
     }
   }
+
   write.csv(df, file = paste0(OUTFILE,'div_count_matr_',SET,'.csv'), row.names = F, quote = F)
 }
 
 # second function for doing similar operations on pre-computed medians across sample types for each of R reps:
-grab_ppcfu_meds <- function(SET, OUTFILE = here("models/div/"), base_mod_dir = here("models/"), prefix = 'bASV-rep_*', output = FALSE){
-  require(dplyr)
-  require(reshape2)
+grab_ppcfu_meds <- function(SET, OUTFILE = "../models/div/", base_mod_dir = "../models/", prefix = 'bASV-rep_*', output = FALSE) {
+
   # grab all relevant files with prefix from focal dir:
   the_files <- Sys.glob(paste0(base_mod_dir,SET,'/ppcfu_data/',prefix))
+
   df <- data.frame()
+
   for (i in seq_along(the_files)){
     f <- read.csv(file = the_files[i])
     f <- dplyr::arrange(f, bASV, rep, herb_dmg)
@@ -60,19 +65,22 @@ grab_ppcfu_meds <- function(SET, OUTFILE = here("models/div/"), base_mod_dir = h
       df <- cbind(df,f2[,-c(1:2)])
     }
   }
+
   if (output == TRUE){
     write.csv(df, file = paste0(OUTFILE,'div_med_matr_',SET,'.csv'), row.names = F, quote = F)
   }
+
   return(df)
 }
 
 # family-level results:
-grab_ppcfu_fams <- function(SET, OUTFILE = here("models/div/"), base_mod_dir = here("models/"), prefix = 'fam-sum-rep_*', output = FALSE){
-  require(dplyr)
-  require(reshape2)
+grab_ppcfu_fams <- function(SET, OUTFILE = "../models/div/", base_mod_dir = "../models/", prefix = 'fam-sum-rep_*', output = FALSE) {
+
   # grab all relevant files with prefix from focal dir:
   the_files <- Sys.glob(paste0(base_mod_dir,SET,'/ppcfu_data/',prefix))
+
   df <- data.frame()
+
   for (i in seq_along(the_files)){
     f <- read.csv(file = the_files[i])
     f <- dplyr::arrange(f, rep, herb_dmg)
@@ -86,12 +94,13 @@ grab_ppcfu_fams <- function(SET, OUTFILE = here("models/div/"), base_mod_dir = h
       names(df)[length(names(df))] <- last(names(f2))
     }
   }
+
   if (output == TRUE){
     write.csv(df, file = paste0(OUTFILE,'div_med_matr_Family_',SET,'.csv'), row.names = F, quote = F)
   }
+
   return(df)
 }
-
 
 # function to run inside lapply for calculating diversity statistics and beta diversity:
 run_calc_div <- function(div, SET, BASE = 'bASV', do.plot = TRUE){
@@ -116,51 +125,56 @@ run_calc_div <- function(div, SET, BASE = 'bASV', do.plot = TRUE){
   # now plot dist
   sh.p1 <- ggplot(dplyr::filter(divres3, variable %in% c('H0','H1')), aes(y = value, x = variable)) +
     geom_jitter(alpha = 0.2, col='gray40', width = 0.1) +
-    geom_boxplot(alpha=0.4, col='gray40') + xlab("") + ylab("Shannon (H')") #+
+    geom_boxplot(alpha = 0.4, col='gray40') + xlab("") + ylab("Shannon (H')") #+
   #scale_y_continuous(limits = c(6, 8), breaks = seq(6,8,0.5))
 
   sh.dp1 <- ggplot(dplyr::filter(divres3, variable %in% c('Hd')), aes(y = value, x = variable)) +
-    geom_jitter(alpha = 0.2, col='gray40', width = 0.1) +
-    geom_boxplot(alpha=0.4, col='gray40') + xlab("") + ylab("difference in H'") +
+    geom_jitter(alpha = 0.2, col = 'gray40', width = 0.1) +
+    geom_boxplot(alpha = 0.4, col = 'gray40') + xlab("") + ylab("difference in H'") +
     geom_hline(yintercept = 0, lty = 3, col = 'gray60')
   #scale_y_continuous(limits = c(6, 8), breaks = seq(6,8,0.5))
 
   ev.p1 <- ggplot(dplyr::filter(divres3, variable %in% c('E0','E1')), aes(y = value, x = variable), col = 'gray40') +
-    geom_jitter(alpha = 0.2, col='gray40', width = 0.1) +
-    geom_boxplot(alpha=0.4, col='gray40') + xlab("") + ylab("evenness (J')") #+
+    geom_jitter(alpha = 0.2, col = 'gray40', width = 0.1) +
+    geom_boxplot(alpha = 0.4, col = 'gray40') + xlab("") + ylab("evenness (J')") #+
     #scale_y_continuous(limits = c(0.75, 1.0), breaks = seq(0.75,1.0,0.05))
 
   ev.dp1 <- ggplot(dplyr::filter(divres3, variable %in% c('Ed')), aes(y = value, x = variable), col = 'gray40') +
-    geom_jitter(alpha = 0.2, col='gray40', width = 0.1) + ylab("difference in J'") +
-    geom_boxplot(alpha=0.4, col='gray40') + xlab("") +
+    geom_jitter(alpha = 0.2, col = 'gray40', width = 0.1) + ylab("difference in J'") +
+    geom_boxplot(alpha = 0.4, col = 'gray40') + xlab("") +
     geom_hline(yintercept = 0, lty = 3, col = 'gray60')
   #scale_y_continuous(limits = c(0.75, 1.0), breaks = seq(0.75,1.0,0.05))
 
   # now plot beta div and put all in one plot:
   beta.p1 <- ggplot(dplyr::filter(divres3, variable %in% c('SJ')), aes(y = value, x = variable), col = 'gray40') +
-    geom_jitter(alpha = 0.2, col='gray40', width = 0.1) +
-    geom_boxplot(alpha=0.4, col='gray40') + xlab("") + ylab("beta diversity (S-J)") #+
+    geom_jitter(alpha = 0.2, col = 'gray40', width = 0.1) +
+    geom_boxplot(alpha = 0.4, col = 'gray40') + xlab("") + ylab("beta diversity (S-J)") #+
     #scale_y_continuous(limits = c(0.1, 0.3), breaks = seq(0.1,0.3,0.05))
+
   if(do.plot==TRUE){
     ggarrange(plotlist = list(sh.p1,ev.p1,sh.dp1,ev.dp1,beta.p1), ncol = 5, widths = c(1,1,0.75,0.75,0.75),align='hv') %>%
-      ggsave(filename = paste0(here("models/div/"),'div_plots_',BASE,'_',SET,'.pdf'),width = 6.5, height = 2.5)
+      ggsave(filename = paste0("../models/div/",'div_plots_',BASE,'_',SET,'.pdf'),width = 6.5, height = 2.5)
   }
+
   return(divres_stats)
 }
 
-#### MAINS ####
-ELdiv <- grab_ppcfu_meds(SET='EL', output = TRUE)
-NPdiv <- grab_ppcfu_meds(SET='NP', output = TRUE)
+# ==== #
+# main #
+# ==== #
 
-run_calc_div(ELdiv, SET='EL', BASE = 'bASV')
-run_calc_div(NPdiv, SET='NP', BASE = 'bASV')
+ELdiv <- grab_ppcfu_meds(SET = 'EL', output = TRUE)
+NPdiv <- grab_ppcfu_meds(SET = 'NP', output = TRUE)
+
+run_calc_div(ELdiv, SET = 'EL', BASE = 'bASV')
+run_calc_div(NPdiv, SET = 'NP', BASE = 'bASV')
 
 # now do this again but at family level:
-ELfam <- grab_ppcfu_fams(SET='EL', output = TRUE)
-NPfam <- grab_ppcfu_fams(SET='NP', output = TRUE)
+ELfam <- grab_ppcfu_fams(SET = 'EL', output = TRUE)
+NPfam <- grab_ppcfu_fams(SET = 'NP', output = TRUE)
 
-ELdivres <- run_calc_div(ELfam, SET='EL', BASE = 'Family', do.plot = FALSE)
-NPdivres <- run_calc_div(NPfam, SET='NP', BASE = 'Family', do.plot = FALSE)
+ELdivres <- run_calc_div(ELfam, SET = 'EL', BASE = 'Family', do.plot = FALSE)
+NPdivres <- run_calc_div(NPfam, SET = 'NP', BASE = 'Family', do.plot = FALSE)
 
 divres_all <- rbind(ELdivres,NPdivres)
 
@@ -220,7 +234,7 @@ B <- ggplot(divres_all[divres_all$stat %in% c('SJ'),]) +
 
 # put it all together:
 ggarrange(plotlist = list(H,Hd,B,E,Ed), ncol = 3, nrow = 2, widths = c(1,0.66,0.66), heights = c(1,1)) %>%
-  ggsave(filename = here("figs/Fig2_diversity_v1.pdf"), width = 3.5, height = 4)
+  ggsave(filename = file.path"../figs/Fig2_diversity_v1.pdf"), width = 3.5, height = 4)
 
 
 # go back and plot the change in frequencies across all bASVs and Families between herbivory types using computed pp medians:
@@ -264,6 +278,6 @@ ELfam_plot <- plot_rel_freqs(ELfam) + ggtitle("EL")
 NPfam_plot <- plot_rel_freqs(NPfam) + ggtitle("NP")
 
 ggarrange(plotlist = list(ELfam_plot, NPfam_plot), common.legend = T, align = 'hv', nrow = 2, legend = 'right') %>%
-  ggsave(filename = here("figs/rel_freq_plot_Fams.pdf"), width = 3.5, height = 4.5)
+  ggsave(filename = file.path("../figs/rel_freq_plot_Fams.pdf"), width = 3.5, height = 4.5)
 
 # done!

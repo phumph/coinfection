@@ -26,9 +26,9 @@ suppressWarnings(suppressPackageStartupMessages(library(brms)))
 suppressWarnings(suppressPackageStartupMessages(library(broom)))
 suppressWarnings(suppressPackageStartupMessages(library(bayesplot)))
 
-library(knitr)
-library(markdown)
-library(rmarkdown)
+suppressWarnings(suppressPackageStartupMessages(library(knitr)))
+suppressWarnings(suppressPackageStartupMessages(library(markdown)))
+suppressWarnings(suppressPackageStartupMessages(library(rmarkdown)))
 ```
 
 # Dataset: `r paste0(SET)`
@@ -128,4 +128,3 @@ ggarrange(plotlist = list(fam_plot1_med,fam_plot1,fam_plot2), ncol =3)
 ```{r fig.height=5, fig.width=6.5, message=FALSE, warning=FALSE, paged.print=FALSE, fig.align='center', fig.cap='bASV-level mean log cfu across 1000 posterior simulations.'}
 print(bASV_plot2)
 ```
-

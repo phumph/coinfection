@@ -1,5 +1,4 @@
-# #!/usr/bin/env Rscript
-
+#!/usr/bin/env Rscript
 
 # load required libraries
 library(knitr)
@@ -7,8 +6,9 @@ library(markdown)
 library(rmarkdown)
 library(brms)
 library(here)
-source(here("scripts/phy_header.R"))
-source(here("scripts/phy_functions.R"))
+
+source("./phy_header.R")
+source("./phy_functions.R")
 
 # args = commandArgs(trailingOnly=TRUE)
 #
@@ -331,7 +331,6 @@ for (m in 1:length(FAMS)){
 
     ifelse(log==FALSE,return(10^cfu),return(cfu))
   }
-
 
   # function to generate joint posterior draws per samp_id for each rep, with observation-level normal deviates per sigma draw per sample
   # this matrix will be of the same dimension as input matrix

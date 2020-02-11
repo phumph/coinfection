@@ -1,17 +1,16 @@
-### Insect herbivory alters the structure of leaf microbiomes
+### Insect herbivory reshapes a native leaf microbiome
 ### Humphrey & Whiteman
 ### last updated: PTH 15-JUN-2018
+
 ## Function definition file
 ## phy_functions.R
 
-
-logit <- function(x){
+logit <- function(x) {
   return(log(x /(1-x)))
 }
 
-
 #### POSTERIOR PREDICTIVE CHECK PLOTTING FUNCTIONS ####
-pp.max <- function(sim1, dat1, fact1 = 'herb_dmg', response1 = 'log_ratio'){
+pp.max <- function(sim1, dat1, fact1 = 'herb_dmg', response1 = 'log_ratio') {
 
   sim1 <- data.frame(sim1)
 
@@ -65,9 +64,7 @@ pp.max <- function(sim1, dat1, fact1 = 'herb_dmg', response1 = 'log_ratio'){
   return(list('plot' = plot1, 'data' = res2))
 }
 
-
-
-pp.stat <- function(sim1, dat1, fact1, response1, FUN = max, xlabs = "max"){
+pp.stat <- function(sim1, dat1, fact1, response1, FUN = max, xlabs = "max") {
 
   sim1 <- data.frame(sim1)
 
@@ -122,8 +119,7 @@ pp.stat <- function(sim1, dat1, fact1, response1, FUN = max, xlabs = "max"){
 }
 
 #### functions for posterior predictions for log ratio and CFU models ####
-
-grab_rds <- function(...){
+grab_rds <- function(...) {
   fam_files <- Sys.glob(paste0(IN_DIR, FAMS[m],'*'))
   fam_mods <- list()
   for (f in 1:length(fam_files)){
@@ -132,19 +128,18 @@ grab_rds <- function(...){
   return(fam_mods)
 }
 
-grab_mod_names <- function(x){
+grab_mod_names <- function(x) {
   #gsub('.rds','',unlist(strsplit(gsub(IN_DIR,'',x),'_'))[3])
   gsub('.rds','',grep('.rds',unlist(strsplit(gsub(IN_DIR,'',x),'_')), value = T))
 }
 
-bernoulli_trials<-function(p)
-{
+bernoulli_trials <- function(p) {
   U <- runif(length(p), 0, 1) # draw p numbers from uniform distribution
   outcomes <- U < p # determine if draw is less than p, taken as a vector (i.e., element-wise comparison between elements of U and p). If the uniform number is less than p, score as success.
   return(as.numeric(outcomes)) # return binary vector of same length as p.
 }
 
-sim_bernoulli <- function(a0,b0,a1,b1,...){
+sim_bernoulli <- function(a0, b0, a1, b1, ...) {
   # generate vector of probabilities to use in bernoulli trials
   prob_vec <- replicate(R, c(rbeta(n = h0, shape1 = a0, shape2 = b0), rbeta(n = h1, shape1 = a1, shape2 = b1)))
   # now conduct bernoulli trials, one for each element of prob_vec
@@ -153,14 +148,14 @@ sim_bernoulli <- function(a0,b0,a1,b1,...){
 }
 
 # draw log_ratio posterior samples from best_mod
-leaf_level_pplr <- function(x, the_mod, ...){
+leaf_level_pplr <- function(x, the_mod, ...) {
   y_rep <- brms::posterior_predict(the_mod, newdata = x, nsamples = R)
   return(y_rep)
 }
 
 # function def to generate predicted CFUs from draws from joint posterior of cfu_mod; returns predicted CFU on linear (i.e. count) scale.
 # PROBABLY OBSOLETE!!!
-cfu_post_pred.old <- function(x, IDs, log=FALSE, ...){
+cfu_post_pred.old <- function(x, IDs, log=FALSE, ...) {
   l <- length(unique(IDs))
   jp <- data.frame(cfu_mod)
   cfu_jpd <- jp[sample(1:length(jp[,1]),l,replace=T),] # draw from joint posterior for each row of the
@@ -172,7 +167,7 @@ cfu_post_pred.old <- function(x, IDs, log=FALSE, ...){
 
 # adding pp_cfu using tapply:
 # PROBABLY OBSOLETE!!!
-cfu_post_pred_lowest <- function(x, log=FALSE, ...){
+cfu_post_pred_lowest <- function(x, log=FALSE, ...) {
   #l <- length(unique(IDs))
   jp <- data.frame(cfu_mod)
   cfu_jpd <- jp[sample(1:length(jp[,1]),1,replace=T),] # draw from joint posterior
@@ -184,7 +179,7 @@ cfu_post_pred_lowest <- function(x, log=FALSE, ...){
 
 # function to generate joint posterior draws per samp_id for each rep, with observation-level normal deviates per sigma draw per sample
 # the output matrix will be of the same dimension as input matrix
-pp_cfu_per_leaf <- function(x, samp_col = 'samp_id', ...){
+pp_cfu_per_leaf <- function(x, samp_col = 'samp_id', ...) {
   jp <- data.frame(cfu_mod)
   dat1 <- expand.grid(samp_id = c(1:max(as.numeric(x[,samp_col]))),
                       rep = c(1:max(as.numeric(x$rep))))
@@ -199,7 +194,7 @@ pp_cfu_per_leaf <- function(x, samp_col = 'samp_id', ...){
 }
 
 
-pp_cfu_per_leaf_all <- function(x, samp_col = 'samp_id', the_fact = 'sp_id', ...){
+pp_cfu_per_leaf_all <- function(x, samp_col = 'samp_id', the_fact = 'sp_id', ...) {
   jp <- data.frame(cfu_mod)
 
   if (is.numeric(x[,samp_col])==FALSE){
@@ -221,7 +216,7 @@ pp_cfu_per_leaf_all <- function(x, samp_col = 'samp_id', the_fact = 'sp_id', ...
 
 
 #### ACCESSORY FUNCTIONS ####
-row_rep <- function(x, fact = 'n.leaves', fact2 = 'n.mined.leaves'){
+row_rep <- function(x, fact = 'n.leaves', fact2 = 'n.mined.leaves') {
   colz <- names(x)[!names(x) %in% fact]
   x2 <- x[rep(row.names(x), x[,fact]), colz]
   x2$herb_dmg <- 0
@@ -237,8 +232,7 @@ row_rep <- function(x, fact = 'n.leaves', fact2 = 'n.mined.leaves'){
 }
 
 #### DIVERSITY FUNCTIONS ####
-
-shannon <- function(x, is.prop=FALSE){
+shannon <- function(x, is.prop=FALSE) {
   if (is.prop == TRUE){
     tmp1 <- x[x>0]
     H <- -sum(tmp1*log(tmp1,2))
@@ -250,7 +244,7 @@ shannon <- function(x, is.prop=FALSE){
   return(H)
 }
 
-evenness <- function(x, is.prop=FALSE){
+evenness <- function(x, is.prop=FALSE) {
   if (is.prop == TRUE){
     tmp1 <- x[x>0]
     H <- -sum(tmp1*log(tmp1,2))
@@ -263,7 +257,7 @@ evenness <- function(x, is.prop=FALSE){
   return(H/Hmax)
 }
 
-SJ.divergence <- function(x,y,base=2,sq=F){
+SJ.divergence <- function(x,y,base=2,sq=F) {
   # remove double 0 entries
   xx <- x[!((x==0) & (y==0))]
   yy <- y[!((x==0) & (y==0))]
@@ -289,7 +283,7 @@ SJ.divergence <- function(x,y,base=2,sq=F){
 }
 
 # function to calculate all diversity indexes on two-row data.frame input x (supplied via lapply)
-calc_div <- function(x){
+calc_div <- function(x) {
   s0 <- shannon(x[1,-c(1:2)])
   s1 <- shannon(x[2,-c(1:2)])
   e0 <- evenness(x[1,-c(1:2)])
@@ -297,4 +291,3 @@ calc_div <- function(x){
   sj <- SJ.divergence(x[1,-c(1:2)],x[2,-c(1:2)])
   data.frame(rep = x[1,1], H0 = s0, H1 = s1, Hd = s1 - s0, E0 = e0, E1 = e1, Ed = e1 - e0, SJ = sj)
 }
-

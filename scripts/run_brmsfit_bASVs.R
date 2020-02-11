@@ -4,10 +4,8 @@
 ## last updated: 27-JUN-18 by PTH
 
 # script runs Bayesian estimation of model coefficients for Family-level bASV abundance across given dataset.
-# outputs are model .RDS objects fitted with params set globally in this script
+# outputs are model .RDS objects fitted with params set in this script
 # these .RDS objects get summarized and all plots outputted in subsequent script.
-# this is just the model caller!
-
 
 # inputs:
   # DAT = input data.frame containing all relevant information (full path)
@@ -46,7 +44,7 @@ OUTDIR <- ifelse((substr(OUTDIR, nchar(OUTDIR),nchar(OUTDIR))=='/'),
 # FAMS <- paste0(read.csv("/Users/phumph/Dropbox/Phyllosphere_project/analysis_phy/coinfection/models/all_fams.csv",header = F)$V1)
 
 DAT <- DAT[DAT$bASV_count>0,]
-DAT$log_ratio <- log(DAT$bASV_count / DAT$host)
+DAT$log_ratio <- log(DAT$bASV_count/DAT$host)
 
 # next steps:
   # 1. filter DAT
@@ -58,6 +56,7 @@ mod.names <- c('ga0','ga1','ga2','skn0','skn1','skn2','skn3','skn4')
 
 # run models for each family in FAMS
 for(s in 1:length(FAMS)){
+
   # create tmp dataframe for focal FAM
   dd <- dplyr::filter(DAT, Family == FAMS[s])
   dd$herb_dmg <- factor(dd$herb_dmg)
@@ -98,7 +97,8 @@ for(s in 1:length(FAMS)){
   }
   cat("done!\n")
 }
+
 cat("\n\n(now we're really done.)")
 
-# first attempt: run with terminal
-# Rscript --vanilla run_brmsfit_bASVs.R /Users/phumph/Dropbox/Phyllosphere_project/analysis_phy/coinfection/data/ELD_long_v1.csv /Users/phumph/Dropbox/Phyllosphere_project/analysis_phy/coinfection/models/all_fams.csv /Users/phumph/Dropbox/Phyllosphere_project/analysis_phy/coinfection/models/
+# execute script via the terminal
+# Rscript run_brmsfit_bASVs.R /Users/phumph/Dropbox/Phyllosphere_project/analysis_phy/coinfection/data/ELD_long_v1.csv /Users/phumph/Dropbox/Phyllosphere_project/analysis_phy/coinfection/models/all_fams.csv /Users/phumph/Dropbox/Phyllosphere_project/analysis_phy/coinfection/models/

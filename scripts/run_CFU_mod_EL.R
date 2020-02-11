@@ -1,12 +1,13 @@
+#!/usr/bin/env Rscript
+
 # run_CFU_mod_EL.R
 # script to run model examining log10 CFU in calibration set from EL (n=101 samples)
 
-# header
-library(here)
-source(here("scripts/phy_functions.R"))
-source(here("scripts/phy_header.R"))
+source("./phy_functions.R")
+source("./phy_header.R")
 
-ELD <- read.csv(file = here("data/ELD_final.csv"))
+# read data
+ELD <- read.csv(file = file.path("../data/ELD_final.csv"))
 
 # grab subset of rows where logLeafCFU>0:
 ELc <- ELD[complete.cases(ELD[,'logLeafCFU']),]
@@ -25,5 +26,4 @@ cfu1 <- ggplot(ELc, aes(y = logLeafCFU, x = factor(herb_dmg), col = factor(herb_
   theme_phy1() + theme(legend.position = "none")
 
 # run quick t-test to report in SI:
-
 t.test(ELc$logLeafCFU ~ ELc$herb_dmg)

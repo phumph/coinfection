@@ -1,7 +1,7 @@
 #! /usr/bin/Rscript
 # run_greenhouse_analysis_v1.R
 # script to run greenhouse analyses
-# last updated: 2018-SEP-24 by PTH
+# last updated: 2019-AUG-07 by PTH
 
 # header
 library(here)
@@ -14,47 +14,32 @@ options(mc.cores = parallel::detectCores())
 # step 1: find data and get into analyzable format
 gh1 <- read.csv(file = here("data/greenhouse_doublings_data.csv"))
 
-# plot the raw data:
-ggplot(gh1, aes(x = strain.id, y = n.doublings, col = factor(plant.tx))) + facet_wrap(~ spp, scales = "free_x") +
-  geom_jitter(position = position_dodge(1), alpha = 0.2) + geom_boxplot(position = position_dodge(1), alpha = 0.2) +
-  scale_color_manual(values = c('gray40','dodgerblue'))
-
-# # re-calculate doublings:
-# gh1$n.doublings2 <- gh1$n.doublings
-# gh1$n.doublings <- with(gh1,log(((10^log.avg.g)),2))
-# gh1$plant.tx <- factor(gh1$plant.tx)
-
 # run model:
 all_strains_bm1 <- brm(bf(n.doublings ~ 0 + strain.id + plant.tx:strain.id + (1|plant.id)),
                        data = gh1,
                        family = gaussian(),
-                       iter = 4000,
+                       iter = 8000,
                        cores = getOption("mc.cores", 1L))
-
-# all_strains_bm2 <- brm(bf(n.doublings ~ 0 + strain.id + plant.tx:strain.id + (1|plant.id) + (1|pop)),
-#                        data = gh1,
-#                        family = gaussian(),
-#                        iter = 4000,
-#                        cores = getOption("mc.cores", 1L))
-
 
 # add lOO to these models; save:
 all_strains_bm1 <- add_ic(all_strains_bm1, ic = 'loo', reloo=T)
-# all_strains_bm2 <- add_ic(all_strains_bm2, ic = 'loo')
-
 saveRDS(all_strains_bm1, file = here("models/gh_bm1_v3.rds"))
-#saveRDS(all_strains_bm2, file = here("models/gh_bm2.rds"))
+
+# load for plotting:
+if(!exists("all_strains_bm1")) {
+  all_strains_bm1 <- readRDS(file = here("models/gh_bm1_v3.rds"))
+}
 
 # now collect and export coefficients:
+library(broom)
 bm1_coefs <- tidy(all_strains_bm1)
-focal_coefs <- bm1_coefs[grep(':plant.tx2',bm1_coefs$term),]
-
+focal_coefs <- bm1_coefs[grep(':plant.tx', bm1_coefs$term),]
 post_bm1 <- data.frame(all_strains_bm1)
-focal_coefs <- post_bm1[,names(post_bm1) %in% grep('.plant.tx2',names(post_bm1),value=T)]
 
-coef_res <- data.frame(t(apply(focal_coefs,2,quantile, probs = c(0.025,0.25,0.5,0.75,0.975))))
-coef_res$strain.id <- sapply(row.names(coef_res), function(x) gsub('b_strain.id','',x))
-coef_res$strain.id <- sapply(coef_res$strain.id, function(x) gsub('.plant.tx2','',x))
+focal_coefs <- post_bm1[ , names(post_bm1) %in% grep('.plant.tx', names(post_bm1), value=T)]
+coef_res <- data.frame(t(apply(focal_coefs, 2, quantile, probs = c(0.025,0.25,0.5,0.75,0.975))))
+coef_res$strain.id <- sapply(row.names(coef_res), function(x) gsub('b_strain.id', '', x))
+coef_res$strain.id <- sapply(coef_res$strain.id, function(x) gsub('.plant.tx', '', x))
 
 # re-order strain.id to match phylogeny:
 strain_order <- c("20A","22B","26B","46B","02A","20B","36A","29A","39A","33E","03A","46A")
@@ -73,8 +58,8 @@ gh_p1 <- ggplot(gh2, aes(y = strain.id, x = factor(plant.tx))) +
   #scale_fill_gradientn(colors = cividis(20)) +
   #scale_fill_gradientn(colors = magma(20)) +
   #scale_fill_gradientn(colors = plasma(20)) +
-  #scale_fill_gradientn(colors = viridis(20)) +
-  scale_fill_gradient(low = "white", high = "black") +
+  scale_fill_gradientn(colors = parula(64)) +
+  #scale_fill_gradient(low = "white", high = "black") +
   theme(legend.position = 'top') + xlab("")
 
 # now for the posterior of n.doublings different in JA versus MOCK:
@@ -103,14 +88,7 @@ ggarrange(plotlist = list(gh_p1, doubling_diffs),
           ncol = 2,
           widths = c(0.4,1),
           common.legend = T, align = 'h') %>%
-  ggsave(filename = here("figs/Fig4_bw_v2.pdf"), width = 3, height = 3)
-
-# plot total observed counts across each plant.id split by tx:
-gh_sums <- dplyr::group_by(gh1, plant.tx, plant.id, spp) %>% summarise(sum_log.g = log(sum(10^log.avg.g),10))
-
-# plot distribution of abundances:
-ggplot(gh_sums, aes(x = factor(plant.tx), y = sum_log.g)) + facet_wrap(~ spp) +
-  geom_jitter(width = 0.1)
+  ggsave(filename = here("figs/Fig4_parula_v2.pdf"), width = 3, height = 3)
 
 #### posterior simulations of communities ####
 
@@ -120,17 +98,17 @@ ggplot(gh_sums, aes(x = factor(plant.tx), y = sum_log.g)) + facet_wrap(~ spp) +
   # 3. use baseline density as 10^5
   # 4. create community matrixes of medians across leaf types.. or just use marginal effects to simualate this.
 
-
-
 # re-load up model:
-all_strains_bm1 <- readRDS(file = here("models/gh_bm1.rds"))
+if(!exists("all_strains_bm1")) {
+  all_strains_bm1 <- readRDS(file = here("models/gh_bm1_v3.rds"))
+}
 strain_order <- c("20A","22B","26B","46B","02A","20B","36A","29A","39A","33E","03A","46A")
+
 # version 1.0: ignoring group-level term and just drawing from the joint posterior of the intercept and slope for each strain (as well as from the residual distribution)
 # version 2.0: this would add additional variance in the form of plant-level intercept effects. Could sample new arbitrary levels for this
 
-
 # construct newdat
-plant.tx <- c(1,2)
+plant.tx <- c(1, 2)
 newdat <- expand.grid(strain.id = strain_order, plant.tx = plant.tx)
 newdat <- cbind(newdat,
                 plant.id = c(rep('A',length(strain_order)),rep('B',length(strain_order)))
@@ -146,7 +124,7 @@ ppgh1 <- brms::posterior_predict(all_strains_bm1,
                                  sample_new_levels = 'gaussian',
                                  nsamples = 200)
 
-# # transform into abundances:
+# transform into abundances:
 ppgh2 <- round(2^ppgh1)
 
 # add back to original data.frame and plot distributions
@@ -170,6 +148,7 @@ gh_breakdown1 <- ggplot(ppgh4a, aes(x = factor(plant.tx), y = log(sum_ppcfu,10),
   scale_y_continuous(limits = c(2.25, 12.5), breaks = seq(2.5,12.5,2.5))
 
 ppgh4b <- dplyr::group_by(ppgh3b, plant.tx, spp, rep) %>% summarise(sum_ppcfu = sum(ppcfu))
+
 # posterior predicted total bacteria in JA treated leaves:
 gh_breakdown2 <- ggplot(ppgh4b, aes(x = factor(plant.tx), y = log(sum_ppcfu,10), col = factor(plant.tx))) +
   geom_jitter(width = 0.1, alpha = 0.2) + geom_boxplot(alpha = 0.2) +
@@ -277,15 +256,9 @@ ggarrange(plotlist = list(gh_breakdown_fam, gh_breakdown_clade, gh_breakdown_str
 gh_pp7 <- reshape2::dcast(gh_pp6, rep + Genus ~ plant.tx, value.var = 'log_sum_med_ppcfu')
 gh_pp7$log2diff <- log(10^(gh_pp7[,4]),2) - log(10^(gh_pp7[,3]),2)
 
-# plot distribution of this:
-quantile(gh_pp7$log2diff) # this is basically exactly consistent with what we find in the 16S data...
 # now generate plot which examines relative abundance across plant treatment types.
 # this is to show the "community reshaping" point we make throughout the paper
 # Do we use relative abundances? Do we plot change in rank abundances?
-
-# plan for next steps:
-  # 1. generate abundance matrixes for each rep in order to do S-J comparisons.
-  # 2. Look at relative abundance plots as visual for changing community composition patterns; this will motivate the diversity changes.
 
 # generate community matrix:
 gh_pp4$med_ppcfu <- round(10^gh_pp4$log_med_ppcfu)
@@ -295,24 +268,26 @@ gh_pp4d[,-c(1:2)] <- gh_pp4d[,-c(1:2)]/rowSums(gh_pp4d[,-c(1:2)])
 # first, generate plot of relative abundance differences between treatments for each strain
 gh_pp4d2 <- reshape2::melt(gh_pp4d, id.vars = c('plant.tx','rep'), variable.name = 'strain.id', value.name = 'freq')
 gh_pp4d2$log_f <- log(gh_pp4d2$freq,10) # compute log frequency
+
 # summarise with quantiles for each strain by treatment
 gh_pp4d3 <- dplyr::group_by(gh_pp4d2, strain.id, plant.tx) %>% summarise(mu_log_f = mean(log_f),
-                                                                         q0.025 = quantile(log_f, probs = c(0.025)),
-                                                                         q0.25 = quantile(log_f, probs = c(0.25)),
-                                                                         q0.50 = quantile(log_f, probs = c(0.5)),
-                                                                         q0.75 = quantile(log_f, probs = c(0.75)),
-                                                                         q0.975 = quantile(log_f, probs = c(0.975)))
+                                                                         q0.025   = quantile(log_f, probs = c(0.025)),
+                                                                         q0.25    = quantile(log_f, probs = c(0.25)),
+                                                                         q0.50    = quantile(log_f, probs = c(0.5)),
+                                                                         q0.75    = quantile(log_f, probs = c(0.75)),
+                                                                         q0.975   = quantile(log_f, probs = c(0.975)))
 
 # re-shape df and plot:
 # merge separate subsets of the data!
 gh_pp4d4 <- merge(gh_pp4d3[gh_pp4d3$plant.tx==1,], gh_pp4d3[gh_pp4d3$plant.tx==2,], by = 'strain.id', sort = F)
+
 # merge with spp to plot by color:
 gh_pp4d4 <- merge(gh_pp4d4, unique(gh1[,names(gh1) %in% c('strain.id','spp')]))
 
 # now plot:
 rfp1 <- ggplot(gh_pp4d4) +
-  geom_errorbar(aes(x = q0.50.x, y = q0.50.y, ymin = q0.025.y, ymax = q0.975.y), col = "gray40") +
-  geom_errorbarh(aes(x = q0.50.x, y = q0.50.y, xmin = q0.025.x, xmax = q0.975.x), col = "gray40") +
+  geom_errorbar(aes(x = q0.50.x, y = q0.50.y, ymin = q0.025.y, ymax = q0.975.y), col = "gray40", width = 0) +
+  geom_errorbarh(aes(x = q0.50.x, y = q0.50.y, xmin = q0.025.x, xmax = q0.975.x), col = "gray40", height = 0) +
   geom_abline(intercept = 0, slope = 1) +
   geom_point(aes(x = q0.50.x, y = q0.50.y, fill = spp), color = "black", pch = 21) +
   scale_fill_manual(values = c('white','black')) +
@@ -331,23 +306,23 @@ ggsave(rfp1, filename = here("figs/gh_rel_freq_plot.pdf"), width = 3, height = 2
 # now time to calculate the statistics:
 # gh_pp4d4
 # need to split this by rep and plant.tx
-gh_pp5 <- split(gh_pp4d, gh_pp4d$rep)
+gh_pp5s <- split(gh_pp4d, gh_pp4d$rep)
 
 # call up accessory function
 quantize <- function(x){
   res <- c(mean = mean(x$value),
-           quantile(x$value,probs=c(0.025,0.25,0.5,0.75,0.975)))
-  res <- data.frame(stat = x$variable[1],t(res))
+           quantile(x$value, probs=c(0.025,0.25,0.5,0.75,0.975)))
+  res <- data.frame(stat = x$variable[1], t(res))
 }
 
 # need to lapply diversity calculator here:
-gh_div <- lapply(gh_pp5, calc_div)
+gh_div <- lapply(gh_pp5s, calc_div)
 gh_div2 <- do.call(rbind, gh_div)
 gh_div3 <- reshape2::melt(gh_div2, id.var = 'rep')
 
 # lapply quantize to each element
 gh_div3b <- split(gh_div3, gh_div3$variable)
-gh_div4 <- do.call(rbind,lapply(gh_div3b,quantize))
+gh_div4 <- do.call(rbind, lapply(gh_div3b,quantize))
 
 # now plot:
 H <- ggplot(gh_div4[gh_div4$stat %in% c('H0','H1'),]) +
@@ -402,8 +377,8 @@ B <- ggplot(gh_div4[gh_div4$stat %in% c('SJ'),]) +
 ggarrange(plotlist = list(H, Hd, E, Ed, B), ncol = 5, align = 'hv') %>% ggsave(filename = here("figs/gh_div_plots_v1.pdf"), width = 4, height= 2)
 
 # calculate posterior summary statistics
-Hd_bpv <- length(gh_div2$Hd[gh_div2$Hd<0])/length(gh_div2$Hd)
-Ed_bpv <- length(gh_div2$Ed[gh_div2$Ed<0])/length(gh_div2$Ed)
+Hd_bpv <- length(gh_div2$Hd[gh_div2$Hd < 0]) / length(gh_div2$Hd)
+Ed_bpv <- length(gh_div2$Ed[gh_div2$Ed < 0]) / length(gh_div2$Ed)
 
 #### RE-DO OF PLOTS WITH ALL DATA ####
 
@@ -436,25 +411,26 @@ coef_res <- rbind(coef_res, clade_doublings, genus_doublings) # levels are alrea
 # need to take median across reps, call it log.med.cfu.g:
 gh_pp6$Genus <- paste0('clade')
 abund_genus <- dplyr::group_by(gh_pp6, Genus, plant.tx) %>% summarise(log.med.cfu.g = median(log_sum_med_ppcfu))
-abund_genus$plant.tx <- factor(abund_genus$plant.tx)
+#abund_genus$plant.tx <- factor(abund_genus$plant.tx)
 
 # do same per clade:
 abund_clade <- dplyr::group_by(gh_pp5, spp, plant.tx) %>% summarise(log.med.cfu.g = median(log_sum_med_ppcfu))
-abund_clade$plant.tx <- factor(abund_clade$plant.tx)
+#abund_clade$plant.tx <- factor(abund_clade$plant.tx)
 
 # change factor names
 names(abund_genus)[1] <- 'strain.id'
 names(abund_clade)[1] <- 'strain.id'
 
 # put it all back together:
-gh3 <- rbind(gh2[,-3], abund_clade, abund_genus)
+gh3 <- dplyr::bind_rows(gh2[,-3], abund_clade, abund_genus)
+
 # re-order strains:
 gh3$strain.id <- factor(gh3$strain.id, levels = rev(c('clade','Psyr','Pfluo',strain_order)))
 
 gh_p2 <- ggplot(gh3, aes(y = strain.id, x = factor(plant.tx))) +
   geom_tile(aes(fill = log.med.cfu.g)) +
   #scale_fill_gradient2(low = "steelblue", high = "darkorange2", midpoint = median(fam_sums$log_med_0.50)) +
-  scale_fill_gradientn(colors = cividis(20)) +
+  scale_fill_gradientn(colors = parula(64)) +
   #scale_fill_gradientn(colors = magma(20)) +
   #scale_fill_gradientn(colors = plasma(20)) +
   #scale_fill_gradientn(colors = viridis(20)) +
@@ -488,4 +464,4 @@ ggarrange(plotlist = list(gh_p2, doubling_diffs2),
           widths = c(0.4,1),
           common.legend = T, align = 'h') %>%
   #ggsave(filename = here("figs/Fig4_bw_v3.pdf"), width = 3.125, height = 3.125)
-ggsave(filename = here("figs/Fig4_bw_cividis.pdf"), width = 3.125, height = 3.125)
+ggsave(filename = here("figs/Fig4_parula_w_clades.pdf"), width = 3.125, height = 3.125)

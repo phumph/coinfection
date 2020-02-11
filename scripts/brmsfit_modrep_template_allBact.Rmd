@@ -26,9 +26,9 @@ suppressWarnings(suppressPackageStartupMessages(library(brms)))
 suppressWarnings(suppressPackageStartupMessages(library(broom)))
 suppressWarnings(suppressPackageStartupMessages(library(bayesplot)))
 
-library(knitr)
-library(markdown)
-library(rmarkdown)
+suppressWarnings(suppressPackageStartupMessages(library(knitr)))
+suppressWarnings(suppressPackageStartupMessages(library(markdown)))
+suppressWarnings(suppressPackageStartupMessages(library(rmarkdown)))
 ```
 
 # Dataset: `r paste0(SET)`
@@ -120,4 +120,3 @@ Plots of distributions of medians and means of the log posterior predicted CFU p
 ```{r fig.height=2, fig.width=6, message=FALSE, warning=FALSE, paged.print=FALSE, fig.align='center', fig.cap='Distributions of posterior predicted median log CFU (right) and mean log CFU (middle, right) across 1000 posterior simulation replicates.'}
 ggarrange(plotlist = list(all_plot1_med, all_plot1, all_plot2, all_plot2_med), ncol = 4)
 ```
-

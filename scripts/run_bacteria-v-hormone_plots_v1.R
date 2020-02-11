@@ -5,16 +5,15 @@
 # point will be to emphasize the small, if non-existent effect of the hormones versus the herbivore damage.
 
 # header
-library(here)
-source(here("scripts/phy_header.R"))
-source(here("scripts/phy_functions.R"))
+source(file.path("./phy_header.R"))
+source(file.path("./phy_functions.R"))
 
 #### run for allBact ####
 
 # load data
-ASVs <- read.csv(file = here("data/ASV_table_26-JUN-2018.csv"), row.names = 1)
-bTAX <- read.csv(file = here("data/bTAX_table_26-JUN-2018.csv"), row.names = 1)
-mNP  <- read.csv(file = here("data/NP_sample_data_final.csv"), row.names = 1)
+ASVs <- read.csv(file = file.path("../data/ASV_table_26-JUN-2018.csv"), row.names = 1)
+bTAX <- read.csv(file = file.path("../data/bTAX_table_26-JUN-2018.csv"), row.names = 1)
+mNP  <- read.csv(file = file.path("../data/NP_sample_data_final.csv"), row.names = 1)
 mNP$sp_id <- with(mNP,paste0(plot_num,'_',sub_plot_tx))
 
 # clean up counts and re-total
@@ -41,8 +40,8 @@ NPD$stem_tx <- factor(NPD$stem_tx, levels = c('MC','JATX','SATX'))
 NPD$stem_tx <- relevel(NPD$stem_tx, ref = 'MC')
 
 # now bring in individual Family taxa for joint plotting:
-DAT <- read.csv("/Users/phumph/Dropbox/Phyllosphere_project/analysis_phy/coinfection/data/NPD_long_v1.csv", header = T)
-FAMS <- paste0(read.csv("/Users/phumph/Dropbox/Phyllosphere_project/analysis_phy/coinfection/models/all_fams.csv",header = F)$V1)
+DAT <- read.csv(file.path("../data/NPD_long_v1.csv"), header = T)
+FAMS <- paste0(read.csv(file.path("../models/all_fams.csv"), header = F)$V1)
 FAMS <- FAMS[!FAMS %in% fams_to_remove]
 
 DAT <- DAT[DAT$bASV_count>0,]
@@ -94,6 +93,7 @@ fam_order <- c('allBacteria','Pseudomonadaceae','Enterobacteriaceae','Oxalobacte
                'Comamonadaceae','Sphingomonadaceae','Rhizobiaceae','Methylobacteriaceae',
                'Hyphomicrobiaceae','Streptococcaceae','Paenibacillaceae','Sphingobacteriaceae',
                'Flavobacteriaceae','Cytophagaceae','Microbacteriaceae')
+
 DAT5$Family <- factor(DAT5$Family, levels = fam_order)
 
 # creat composite factor to put all on same x-axis:
@@ -111,4 +111,4 @@ bvh_all <- ggplot(data = DAT5, aes(x = tx_dmg, y = log_ratio, col = factor(herb_
   geom_crossbar(data = DAT6, aes(y = med_lr, x = tx_dmg, ymin = med_lr, ymax = med_lr), col='black',alpha=0.6) +
   xlab("sample-level treatment") + ylab("gamma")
 
-ggsave(bvh_all, file = here("figs/bvh_all_v1.pdf"),width = 6, height = 5)
+ggsave(bvh_all, file = file.path("../figs/bvh_all_v1.pdf"),width = 6, height = 5)
